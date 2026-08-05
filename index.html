@@ -1,0 +1,243 @@
+<meta charset="utf-8" />
+<title>수강료 납부 현황 집계 — 1단계 (학생별 납부액 총합 CSV)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic",
+      "Apple SD Gothic Neo", sans-serif;
+    max-width: 900px; margin: 0 auto; padding: 24px; line-height: 1.6;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .sub { color: #666; margin-top: 0; font-size: .9rem; }
+  #drop {
+    border: 2px dashed #999; border-radius: 12px; padding: 40px 20px;
+    text-align: center; cursor: pointer; transition: .15s; margin: 20px 0;
+  }
+  #drop.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
+  #drop b { color: #2563eb; }
+  .opt { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+  button {
+    font-size: 1rem; padding: 10px 18px; border: 0; border-radius: 8px;
+    background: #2563eb; color: #fff; cursor: pointer;
+  }
+  button:disabled { background: #9ca3af; cursor: not-allowed; }
+  .summary { background: rgba(37,99,235,.08); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .summary span { display: inline-block; margin-right: 20px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: .9rem; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .wrap { max-height: 420px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; }
+  .err { color: #b91c1c; white-space: pre-wrap; }
+  .muted { color: #888; font-size: .85rem; }
+</style>
+
+<h1>수강료 납부 현황 집계 — 1단계</h1>
+<p class="sub">수납 현황 <code>.xls / .xlsx</code> 파일을 올리면 <b>학생별 납부액 총합 CSV</b>(번호·이름·학년·납부액총합)를 만듭니다.</p>
+
+<div id="drop">
+  📄 여기에 파일을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
+  <span class="muted">지원 형식: .xlsx, .xls — 파일은 서버로 전송되지 않고 브라우저 안에서만 처리됩니다.</span>
+</div>
+<input id="file" type="file" accept=".xls,.xlsx" hidden />
+
+<label class="opt">
+  <input id="excludeRefund" type="checkbox" checked />
+  환불(상태='환불') 건을 합계에서 제외 <span class="muted">— 권장(요약 납부총액과 일치)</span>
+</label>
+
+<div id="out"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function () {
+  const drop = document.getElementById("drop");
+  const fileInput = document.getElementById("file");
+  const out = document.getElementById("out");
+  const excludeRefund = document.getElementById("excludeRefund");
+  let lastRows = null; // cached array-of-arrays for re-compute on option change
+
+  drop.addEventListener("click", () => fileInput.click());
+  ["dragover", "dragenter"].forEach((e) =>
+    drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add("hover"); })
+  );
+  ["dragleave", "drop"].forEach((e) =>
+    drop.addEventListener(e, () => drop.classList.remove("hover"))
+  );
+  drop.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    if (ev.dataTransfer.files.length) handleFile(ev.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) handleFile(fileInput.files[0]);
+  });
+  excludeRefund.addEventListener("change", () => { if (lastRows) render(lastRows); });
+
+  function handleFile(file) {
+    out.innerHTML = '<p class="muted">읽는 중…</p>';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        // array-of-arrays, keep empty cells as "" so column positions are stable
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+        lastRows = rows;
+        render(rows);
+      } catch (err) {
+        out.innerHTML = '<p class="err">파일을 읽지 못했습니다: ' + err.message + "</p>";
+      }
+    };
+    reader.onerror = () => { out.innerHTML = '<p class="err">파일 읽기 오류</p>'; };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ---- column detection ----
+  const HEADERS = { no:"NO", cls:"반", name:"이름", grade:"학년", amount:"납부액", status:"상태" };
+  function findHeader(rows) {
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const r = rows[i].map((c) => String(c).trim());
+      if (r.includes("NO") && r.includes("이름") && r.includes("납부액")) {
+        const idx = {};
+        for (const key in HEADERS) idx[key] = r.indexOf(HEADERS[key]);
+        return { headerRow: i, idx };
+      }
+    }
+    return null;
+  }
+
+  function toNumber(v) {
+    if (typeof v === "number") return v;
+    if (v == null || v === "") return 0;
+    const n = parseFloat(String(v).replace(/[, ]/g, ""));
+    return isNaN(n) ? 0 : n;
+  }
+  const s = (v) => (v == null ? "" : String(v).trim());
+
+  // 학년 정렬 순서: 초 < 중 < 고 < 기타, 같은 급이면 숫자
+  function gradeRank(g) {
+    const m = String(g).match(/(초|중|고)?\s*(\d+)?/);
+    const base = { "초": 0, "중": 100, "고": 200 }[m && m[1]] ?? 900;
+    return base + (m && m[2] ? parseInt(m[2], 10) : 0);
+  }
+
+  function build(rows) {
+    const h = findHeader(rows);
+    if (!h) throw new Error("헤더(NO·이름·납부액)를 찾지 못했습니다. 형식을 확인해 주세요.");
+    const { idx } = h;
+    const data = rows.slice(h.headerRow + 1);
+
+    // 1) 결제건(=NO가 채워진 행) 추출 + 반 목록(다음 결제건 전까지의 반 셀들)
+    const records = [];
+    for (let i = 0; i < data.length; i++) {
+      const noVal = s(data[i][idx.no]);
+      if (noVal === "") continue; // 반 목록 연장 행
+      const roster = [];
+      const first = s(data[i][idx.cls]);
+      if (first) roster.push(first);
+      for (let j = i + 1; j < data.length && s(data[j][idx.no]) === ""; j++) {
+        const c = s(data[j][idx.cls]);
+        if (c) roster.push(c);
+      }
+      records.push({
+        name: s(data[i][idx.name]),
+        grade: s(data[i][idx.grade]),
+        amount: toNumber(data[i][idx.amount]),
+        status: s(data[i][idx.status]),
+        roster,
+      });
+    }
+
+    const dropRefund = excludeRefund.checked;
+    const kept = records.filter((r) => r.name !== "" && !(dropRefund && r.status.includes("환불")));
+
+    // 2) 그룹핑: 이름 → 학년 → (필요시) 반 목록
+    const byName = new Map();
+    for (const r of kept) {
+      if (!byName.has(r.name)) byName.set(r.name, []);
+      byName.get(r.name).push(r);
+    }
+
+    const rosterSig = (a) => a.slice().sort().join("|");
+    const students = []; // {name, grade, total}
+    for (const [name, recs] of byName) {
+      // 학년별로 분리
+      const byGrade = new Map();
+      for (const r of recs) {
+        if (!byGrade.has(r.grade)) byGrade.set(r.grade, []);
+        byGrade.get(r.grade).push(r);
+      }
+      for (const [grade, gr] of byGrade) {
+        // 같은 이름+학년 안에서 반 목록으로 클러스터링(겹치지 않는 반 목록 = 다른 학생)
+        const clusters = []; // {sig:Set, recs:[]}
+        for (const r of gr) {
+          const sig = rosterSig(r.roster);
+          let hit = null;
+          for (const c of clusters) {
+            if (r.roster.length === 0 || c.sigStr === "" || c.sigStr === sig) { hit = c; break; }
+          }
+          if (!hit) { hit = { sigStr: sig, recs: [] }; clusters.push(hit); }
+          else if (hit.sigStr === "" && sig !== "") hit.sigStr = sig; // 빈 목록 클러스터에 실제 목록 채움
+          hit.recs.push(r);
+        }
+        for (const c of clusters) {
+          const total = c.recs.reduce((a, r) => a + r.amount, 0);
+          students.push({ name, grade, total });
+        }
+      }
+    }
+
+    // 정렬: 학년 → 이름
+    students.sort((a, b) =>
+      gradeRank(a.grade) - gradeRank(b.grade) || a.name.localeCompare(b.name, "ko")
+    );
+    return { students, recordCount: records.length, keptCount: kept.length };
+  }
+
+  function render(rows) {
+    let res;
+    try { res = build(rows); }
+    catch (err) { out.innerHTML = '<p class="err">' + err.message + "</p>"; return; }
+    const { students } = res;
+    const grand = students.reduce((a, x) => a + x.total, 0);
+
+    let html = '<div class="summary">' +
+      "<span><b>학생 수</b> " + students.length + "명</span>" +
+      "<span><b>납부액 총합</b> " + grand.toLocaleString("ko-KR") + "원</span>" +
+      "<span><b>집계 결제건</b> " + res.keptCount + " / " + res.recordCount + "건</span>" +
+      "</div>";
+    html += '<button id="dl">CSV 다운로드 (UTF-8)</button>';
+    html += '<div class="wrap"><table><thead><tr>' +
+      "<th>번호</th><th>이름</th><th>학년</th><th>납부액총합</th></tr></thead><tbody>";
+    students.forEach((st, i) => {
+      html += "<tr><td>" + (i + 1) + "</td><td>" + esc(st.name) + "</td><td>" +
+        esc(st.grade) + '</td><td class="num">' + st.total.toLocaleString("ko-KR") + "</td></tr>";
+    });
+    html += "</tbody></table></div>";
+    out.innerHTML = html;
+    document.getElementById("dl").addEventListener("click", () => downloadCSV(students));
+  }
+
+  function esc(t) {
+    return String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  }
+  function csvCell(v) {
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function downloadCSV(students) {
+    const lines = ["번호,이름,학년,납부액총합"];
+    students.forEach((st, i) =>
+      lines.push([i + 1, csvCell(st.name), csvCell(st.grade), st.total].join(","))
+    );
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "학생별_납부액총합.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+})();
+</script>
