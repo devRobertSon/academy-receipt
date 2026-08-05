@@ -1,5 +1,5 @@
 <meta charset="utf-8" />
-<title>수강료 납부 현황 집계 — 1단계 (학생별 납부액 총합 CSV)</title>
+<title>수강료 납부 현황 집계 — 1단계 (월별 학생 납부액 총합 CSV)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root { color-scheme: light dark; }
@@ -22,20 +22,26 @@
     font-size: 1rem; padding: 10px 18px; border: 0; border-radius: 8px;
     background: #2563eb; color: #fff; cursor: pointer;
   }
+  button.sm { font-size: .85rem; padding: 6px 12px; }
   button:disabled { background: #9ca3af; cursor: not-allowed; }
-  .summary { background: rgba(37,99,235,.08); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
-  .summary span { display: inline-block; margin-right: 20px; }
-  table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: .9rem; }
-  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  .month { border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin: 16px 0; }
+  .month h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  .summary { background: rgba(37,99,235,.08); border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+  .summary span { display: inline-block; margin-right: 18px; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 20px 0; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: .88rem; }
+  th, td { border: 1px solid #ccc; padding: 5px 9px; text-align: left; }
   th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .wrap { max-height: 420px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; }
+  .wrap { max-height: 340px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; }
+  details > summary { cursor: pointer; color: #2563eb; font-size: .9rem; }
   .err { color: #b91c1c; white-space: pre-wrap; }
   .muted { color: #888; font-size: .85rem; }
 </style>
 
 <h1>수강료 납부 현황 집계 — 1단계</h1>
-<p class="sub">수납 현황 <code>.xls / .xlsx</code> 파일을 올리면 <b>학생별 납부액 총합 CSV</b>(번호·이름·학년·납부액총합)를 만듭니다.</p>
+<p class="sub">수납 현황 <code>.xls / .xlsx</code> 파일을 올리면 <b>수납월별로 나눠</b> 각 월마다
+<b>학생별 납부액 총합 CSV</b>(번호·이름·학년·납부액총합)를 만듭니다.</p>
 
 <div id="drop">
   📄 여기에 파일을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
@@ -57,7 +63,7 @@
   const fileInput = document.getElementById("file");
   const out = document.getElementById("out");
   const excludeRefund = document.getElementById("excludeRefund");
-  let lastRows = null; // cached array-of-arrays for re-compute on option change
+  let lastRows = null;
 
   drop.addEventListener("click", () => fileInput.click());
   ["dragover", "dragenter"].forEach((e) =>
@@ -80,9 +86,8 @@
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const wb = XLSX.read(e.target.result, { type: "array" });
+        const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        // array-of-arrays, keep empty cells as "" so column positions are stable
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
         lastRows = rows;
         render(rows);
@@ -95,7 +100,7 @@
   }
 
   // ---- column detection ----
-  const HEADERS = { no:"NO", cls:"반", name:"이름", grade:"학년", amount:"납부액", status:"상태" };
+  const HEADERS = { no:"NO", cls:"반", name:"이름", grade:"학년", month:"수납월", amount:"납부액", status:"상태" };
   function findHeader(rows) {
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
       const r = rows[i].map((c) => String(c).trim());
@@ -116,24 +121,33 @@
   }
   const s = (v) => (v == null ? "" : String(v).trim());
 
-  // 학년 정렬 순서: 초 < 중 < 고 < 기타, 같은 급이면 숫자
+  // 수납월 → "YYYY-MM" 키
+  function monthKey(v) {
+    if (v == null || v === "") return "월미상";
+    if (v instanceof Date) return v.getFullYear() + "-" + String(v.getMonth() + 1).padStart(2, "0");
+    if (typeof v === "number" && XLSX.SSF) {
+      const d = XLSX.SSF.parse_date_code(v);
+      if (d && d.y) return d.y + "-" + String(d.m).padStart(2, "0");
+    }
+    const m = String(v).match(/(\d{4})[-.\/\s]+(\d{1,2})/);
+    return m ? m[1] + "-" + m[2].padStart(2, "0") : String(v).trim();
+  }
+
   function gradeRank(g) {
     const m = String(g).match(/(초|중|고)?\s*(\d+)?/);
     const base = { "초": 0, "중": 100, "고": 200 }[m && m[1]] ?? 900;
     return base + (m && m[2] ? parseInt(m[2], 10) : 0);
   }
 
-  function build(rows) {
+  // 결제건(NO 채워진 행) 추출 — 수납월과 반 목록 포함
+  function extractRecords(rows) {
     const h = findHeader(rows);
     if (!h) throw new Error("헤더(NO·이름·납부액)를 찾지 못했습니다. 형식을 확인해 주세요.");
     const { idx } = h;
     const data = rows.slice(h.headerRow + 1);
-
-    // 1) 결제건(=NO가 채워진 행) 추출 + 반 목록(다음 결제건 전까지의 반 셀들)
     const records = [];
     for (let i = 0; i < data.length; i++) {
-      const noVal = s(data[i][idx.no]);
-      if (noVal === "") continue; // 반 목록 연장 행
+      if (s(data[i][idx.no]) === "") continue;
       const roster = [];
       const first = s(data[i][idx.cls]);
       if (first) roster.push(first);
@@ -142,6 +156,7 @@
         if (c) roster.push(c);
       }
       records.push({
+        month: idx.month >= 0 ? monthKey(data[i][idx.month]) : "월미상",
         name: s(data[i][idx.name]),
         grade: s(data[i][idx.grade]),
         amount: toNumber(data[i][idx.amount]),
@@ -149,29 +164,26 @@
         roster,
       });
     }
+    return records;
+  }
 
-    const dropRefund = excludeRefund.checked;
-    const kept = records.filter((r) => r.name !== "" && !(dropRefund && r.status.includes("환불")));
-
-    // 2) 그룹핑: 이름 → 학년 → (필요시) 반 목록
+  // 한 달치 레코드 → 학생별 합계 (이름 → 학년 → 반 목록)
+  function aggregate(records) {
+    const rosterSig = (a) => a.slice().sort().join("|");
     const byName = new Map();
-    for (const r of kept) {
+    for (const r of records) {
       if (!byName.has(r.name)) byName.set(r.name, []);
       byName.get(r.name).push(r);
     }
-
-    const rosterSig = (a) => a.slice().sort().join("|");
-    const students = []; // {name, grade, total}
+    const students = [];
     for (const [name, recs] of byName) {
-      // 학년별로 분리
       const byGrade = new Map();
       for (const r of recs) {
         if (!byGrade.has(r.grade)) byGrade.set(r.grade, []);
         byGrade.get(r.grade).push(r);
       }
       for (const [grade, gr] of byGrade) {
-        // 같은 이름+학년 안에서 반 목록으로 클러스터링(겹치지 않는 반 목록 = 다른 학생)
-        const clusters = []; // {sig:Set, recs:[]}
+        const clusters = [];
         for (const r of gr) {
           const sig = rosterSig(r.roster);
           let hit = null;
@@ -179,63 +191,94 @@
             if (r.roster.length === 0 || c.sigStr === "" || c.sigStr === sig) { hit = c; break; }
           }
           if (!hit) { hit = { sigStr: sig, recs: [] }; clusters.push(hit); }
-          else if (hit.sigStr === "" && sig !== "") hit.sigStr = sig; // 빈 목록 클러스터에 실제 목록 채움
+          else if (hit.sigStr === "" && sig !== "") hit.sigStr = sig;
           hit.recs.push(r);
         }
         for (const c of clusters) {
-          const total = c.recs.reduce((a, r) => a + r.amount, 0);
-          students.push({ name, grade, total });
+          students.push({ name, grade, total: c.recs.reduce((a, r) => a + r.amount, 0) });
         }
       }
     }
-
-    // 정렬: 학년 → 이름
     students.sort((a, b) =>
       gradeRank(a.grade) - gradeRank(b.grade) || a.name.localeCompare(b.name, "ko")
     );
-    return { students, recordCount: records.length, keptCount: kept.length };
+    return students;
+  }
+
+  function build(rows) {
+    const all = extractRecords(rows);
+    const dropRefund = excludeRefund.checked;
+    const kept = all.filter((r) => r.name !== "" && !(dropRefund && r.status.includes("환불")));
+
+    const byMonth = new Map();
+    for (const r of kept) {
+      if (!byMonth.has(r.month)) byMonth.set(r.month, []);
+      byMonth.get(r.month).push(r);
+    }
+    const months = [...byMonth.keys()].sort();
+    return months.map((mk) => ({
+      key: mk,
+      students: aggregate(byMonth.get(mk)),
+      recordCount: all.filter((r) => r.month === mk).length,
+    }));
   }
 
   function render(rows) {
-    let res;
-    try { res = build(rows); }
+    let monthsData;
+    try { monthsData = build(rows); }
     catch (err) { out.innerHTML = '<p class="err">' + err.message + "</p>"; return; }
-    const { students } = res;
-    const grand = students.reduce((a, x) => a + x.total, 0);
 
-    let html = '<div class="summary">' +
-      "<span><b>학생 수</b> " + students.length + "명</span>" +
-      "<span><b>납부액 총합</b> " + grand.toLocaleString("ko-KR") + "원</span>" +
-      "<span><b>집계 결제건</b> " + res.keptCount + " / " + res.recordCount + "건</span>" +
-      "</div>";
-    html += '<button id="dl">CSV 다운로드 (UTF-8)</button>';
-    html += '<div class="wrap"><table><thead><tr>' +
-      "<th>번호</th><th>이름</th><th>학년</th><th>납부액총합</th></tr></thead><tbody>";
-    students.forEach((st, i) => {
-      html += "<tr><td>" + (i + 1) + "</td><td>" + esc(st.name) + "</td><td>" +
-        esc(st.grade) + '</td><td class="num">' + st.total.toLocaleString("ko-KR") + "</td></tr>";
+    if (!monthsData.length) { out.innerHTML = '<p class="muted">집계할 결제 내역이 없습니다.</p>'; return; }
+
+    let html = "";
+    if (monthsData.length > 1) {
+      html += '<div class="bar"><b>수납월 ' + monthsData.length + "개 감지</b>" +
+        '<button class="sm" id="dlall">모든 월 CSV 한꺼번에 받기</button></div>';
+    }
+    monthsData.forEach((m, mi) => {
+      const grand = m.students.reduce((a, x) => a + x.total, 0);
+      html += '<div class="month"><h2>수납월 ' + esc(m.key) + "</h2>";
+      html += '<div class="summary">' +
+        "<span><b>학생 수</b> " + m.students.length + "명</span>" +
+        "<span><b>납부액 총합</b> " + grand.toLocaleString("ko-KR") + "원</span>" +
+        "<span><b>결제건</b> " + m.recordCount + "건</span>" +
+        "</div>";
+      html += '<button class="sm dl" data-mi="' + mi + '">CSV 다운로드 (' + esc(m.key) + ")</button>";
+      html += '<details><summary>미리보기 (' + m.students.length + "명)</summary>" +
+        '<div class="wrap"><table><thead><tr>' +
+        "<th>번호</th><th>이름</th><th>학년</th><th>납부액총합</th></tr></thead><tbody>";
+      m.students.forEach((st, i) => {
+        html += "<tr><td>" + (i + 1) + "</td><td>" + esc(st.name) + "</td><td>" +
+          esc(st.grade) + '</td><td class="num">' + st.total.toLocaleString("ko-KR") + "</td></tr>";
+      });
+      html += "</tbody></table></div></details></div>";
     });
-    html += "</tbody></table></div>";
     out.innerHTML = html;
-    document.getElementById("dl").addEventListener("click", () => downloadCSV(students));
+
+    out.querySelectorAll("button.dl").forEach((b) =>
+      b.addEventListener("click", () => downloadMonth(monthsData[+b.dataset.mi]))
+    );
+    const dlall = document.getElementById("dlall");
+    if (dlall) dlall.addEventListener("click", () => monthsData.forEach((m, i) =>
+      setTimeout(() => downloadMonth(m), i * 300)));
   }
 
   function esc(t) {
     return String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   }
   function csvCell(v) {
-    const s = String(v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    const t = String(v);
+    return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   }
-  function downloadCSV(students) {
+  function downloadMonth(m) {
     const lines = ["번호,이름,학년,납부액총합"];
-    students.forEach((st, i) =>
+    m.students.forEach((st, i) =>
       lines.push([i + 1, csvCell(st.name), csvCell(st.grade), st.total].join(","))
     );
     const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "학생별_납부액총합.csv";
+    a.download = "학생별_납부액총합_" + m.key + ".csv";
     a.click();
     URL.revokeObjectURL(a.href);
   }
