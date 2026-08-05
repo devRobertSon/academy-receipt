@@ -56,8 +56,12 @@
   .receipt { border: 1.5px solid #222; padding: 18px 22px; margin: 0 auto 22px;
     max-width: 760px; background: #fff; }
   .receipt, .receipt * { color: #111 !important; }
+  .rc-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
+  .rc-serial { font-size: .8rem; font-weight: 600; }
   .rc-formno { text-align: right; font-size: .72rem; color: #555 !important; }
   .rc-title { text-align: center; font-size: 1.35rem; font-weight: 700; letter-spacing: .35em;
+    margin: 4px 0 2px; }
+  .rc-ym { text-align: center; font-size: .95rem; font-weight: 600;
     padding-bottom: 8px; border-bottom: 2px solid #222; margin-bottom: 10px; }
   .rc-meta { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .84rem; }
   .rc-meta th, .rc-meta td { border: 1px solid #555; padding: 5px 9px; text-align: left; }
@@ -518,6 +522,7 @@
     });
 
     let html = "", count = 0;
+    const seqMap = {}; // 수납월별 일련번호 카운터
     list.forEach((stu) => {
       const band = bandOf(stu.grade);
       stu.months.sort((a, b) => a.month.localeCompare(b.month));
@@ -527,7 +532,10 @@
       stu.months.forEach((mo) => {
         const dec = decompose(mo.total, band);
         if (dec.overflow > 0) overflowList.push(stu.name + " " + mo.month);
-        html += receiptHTML(stu, mo, band, dec);
+        // 일련번호: 원서식 지침대로 1년 단위 발급번호(1, 2, 3 …)
+        const yr = (String(mo.month).match(/^(\d{4})/) || [])[1] || String(mo.month);
+        const serial = String(seqMap[yr] = (seqMap[yr] || 0) + 1);
+        html += receiptHTML(stu, mo, band, dec, serial);
         count++;
       });
     });
@@ -541,7 +549,10 @@
     receipts.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function receiptHTML(stu, mo, band, dec) {
+  function receiptHTML(stu, mo, band, dec, serial) {
+    const ym = String(mo.month).match(/^(\d{4})-(\d{2})$/);
+    const ymLabel = ym ? ym[1] + "년 " + ym[2] + "월" : mo.month;
+    const ymBun = ym ? ym[1] + "년 " + parseInt(ym[2], 10) + "월분" : mo.month;
     const rows = [];
     dec.used.forEach((c) => {
       rows.push({ course: "보습", target: c.target, room: c.room, fee: c.price, note: "" });
@@ -567,13 +578,15 @@
         "원 초과하여 초과분은 영수증에 표시되지 않았습니다.</div>" : "";
 
     return '<div class="receipt">' +
-      '<div class="rc-formno">■ 학원의 설립·운영 및 과외교습에 관한 법률 시행규칙 [별지 제24호서식]</div>' +
+      '<div class="rc-top"><span class="rc-serial">일련번호 제 ' + esc(serial) + ' 호</span>' +
+      '<span class="rc-formno">■ 학원의 설립·운영 및 과외교습에 관한 법률 시행규칙 [별지 제24호서식]</span></div>' +
       '<div class="rc-title">교습비등 영수증</div>' +
+      '<div class="rc-ym">' + esc(ymBun) + "</div>" +
       '<table class="rc-meta"><tbody>' +
         "<tr><th>학원(교습소)명</th><td>" + esc(ACADEMY.name) + "</td><th>등록번호</th><td>" + esc(ACADEMY.reg) + "</td></tr>" +
         "<tr><th>소재지</th><td>" + esc(ACADEMY.addr) + "</td><th>전화번호</th><td>" + esc(ACADEMY.tel) + "</td></tr>" +
-        "<tr><th>설립·운영자</th><td>" + esc(ACADEMY.owner) + "</td><th>수납월</th><td>" + esc(mo.month) + "</td></tr>" +
-        "<tr><th>학습자 성명</th><td>" + esc(stu.name) + "</td><th>학년</th><td>" + esc(stu.grade || "-") + "</td></tr>" +
+        "<tr><th>설립·운영자</th><td>" + esc(ACADEMY.owner) + "</td><th>수납 연월</th><td>" + esc(ymLabel) + "</td></tr>" +
+        "<tr><th>학습자 성명</th><td colspan='3'>" + esc(stu.name) + "</td></tr>" +
       "</tbody></table>" +
       '<table class="rc-items"><thead><tr>' +
         "<th>교습과정</th><th>교습대상</th><th>개설반</th><th>교습비(A)</th><th>기타경비(B)</th><th>합계(A+B)</th><th>비고</th>" +
@@ -584,7 +597,9 @@
       '<div class="rc-note">※ 기타경비(모의고사비·교재비·재료비·피복비·급식비·기숙사비·차량비) 없음. ' +
         "진학지도 교습비는 정가 300,000원에서 할인 적용된 금액입니다.</div>" + over +
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br />' +
-        '<span style="letter-spacing:.1em">' + esc(mo.month) + "月</span></div>" +
+        '<span style="letter-spacing:.1em">영수일자 : ' +
+        (ym ? ym[1] + "년 " + parseInt(ym[2], 10) + "월 &nbsp;&nbsp;&nbsp; 일" : esc(ymLabel)) +
+        "</span></div>" +
       '<div class="rc-sign">' + esc(ACADEMY.name) + " · " + esc(ACADEMY.owner) +
         " &nbsp;(인)</div>" +
       "</div>";
