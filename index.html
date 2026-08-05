@@ -11,12 +11,12 @@
   }
   h1 { font-size: 1.4rem; margin-bottom: 4px; }
   .sub { color: #666; margin-top: 0; font-size: .9rem; }
-  #drop {
+  #drop, #drop2 {
     border: 2px dashed #999; border-radius: 12px; padding: 40px 20px;
     text-align: center; cursor: pointer; transition: .15s; margin: 20px 0;
   }
-  #drop.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
-  #drop b { color: #2563eb; }
+  #drop.hover, #drop2.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
+  #drop b, #drop2 b { color: #2563eb; }
   .opt { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
   button {
     font-size: 1rem; padding: 10px 18px; border: 0; border-radius: 8px;
@@ -49,8 +49,40 @@
     padding: 1px 8px; font-size: .78rem; margin-left: 6px; }
   .badge.ok { background: #16a34a; }
   td.warn { background: rgba(234,179,8,.18); }
+  hr { border: 0; border-top: 1px solid #ccc; margin: 28px 0; }
+
+  /* ── 2단계 영수증 (별지 제24호서식) ── */
+  #receipts { margin-top: 12px; }
+  .receipt { border: 1.5px solid #222; padding: 18px 22px; margin: 0 auto 22px;
+    max-width: 760px; background: #fff; }
+  .receipt, .receipt * { color: #111 !important; }
+  .rc-formno { text-align: right; font-size: .72rem; color: #555 !important; }
+  .rc-title { text-align: center; font-size: 1.35rem; font-weight: 700; letter-spacing: .35em;
+    padding-bottom: 8px; border-bottom: 2px solid #222; margin-bottom: 10px; }
+  .rc-meta { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .84rem; }
+  .rc-meta th, .rc-meta td { border: 1px solid #555; padding: 5px 9px; text-align: left; }
+  .rc-meta th { background: #f1f1f1; white-space: nowrap; width: 92px; }
+  .rc-items { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .84rem; }
+  .rc-items th, .rc-items td { border: 1px solid #555; padding: 5px 9px; }
+  .rc-items th { background: #f1f1f1; text-align: center; }
+  .rc-items td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .rc-items tr.sum td { font-weight: 700; background: #fafafa; }
+  .rc-note { font-size: .76rem; color: #666 !important; margin: 4px 0; }
+  .rc-over { font-size: .8rem; color: #b91c1c !important; font-weight: 600; }
+  .rc-foot { margin-top: 16px; text-align: center; font-size: .92rem; line-height: 2.1; }
+  .rc-sign { margin-top: 6px; text-align: right; font-size: .9rem; }
+  .stu-head { max-width: 760px; margin: 18px auto 4px; font-weight: 700; color: #2563eb; }
+
+  @media print {
+    .screen { display: none !important; }
+    body { margin: 0; max-width: none; padding: 0; }
+    #receipts { margin: 0; }
+    .stu-head { display: none; }
+    .receipt { border: 1px solid #000; max-width: none; margin: 0; page-break-after: always; }
+  }
 </style>
 
+<div class="screen">
 <h1>수강료 납부 현황 집계 — 1단계</h1>
 <p class="sub">수납 현황 <code>.xls / .xlsx</code> 파일을 올리면 <b>수납월별로 나눠</b> 각 월마다
 <b>학생별 납부액 총합 CSV</b>(번호·이름·학년·납부액총합)를 만듭니다.</p>
@@ -67,6 +99,26 @@
 </label>
 
 <div id="out"></div>
+
+<hr />
+
+<h1>수강료 영수증 — 2단계</h1>
+<p class="sub">1단계에서 만든 <b>월별 CSV(여러 개 선택 가능)</b>를 올리면
+<b>「학원법 시행규칙 별지 제24호서식」 교습비등 영수증</b> 형식으로 학생별·월별 영수증을 만듭니다.</p>
+
+<div id="drop2">
+  🧾 여기에 <b>월별 CSV 파일들</b>을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
+  <span class="muted">여러 달을 한 번에 올리면 학생별로 각 월 영수증이 만들어집니다.</span>
+</div>
+<input id="files2" type="file" accept=".csv" multiple hidden />
+
+<div class="bar">
+  <button id="printbtn" disabled>🖨 인쇄 / PDF 저장</button>
+  <span id="rc-status" class="muted"></span>
+</div>
+</div><!-- /.screen -->
+
+<div id="receipts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -339,6 +391,203 @@
     a.download = "학생별_납부액총합_" + m.key + ".csv";
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+})();
+</script>
+
+<script>
+// ── 2단계: 월별 CSV → 별지 제24호서식 교습비등 영수증 ──
+(function () {
+  const ACADEMY = {
+    name: "열매맺는나무알과학원",
+    owner: "유한회사 알과학원",
+    addr: "세종시 달빛로47 501호",
+    tel: "044-864-6693",
+    reg: "",
+  };
+  const JMAX = 300000;
+  const PRICE = { "초": 200000, "중": 250000, "고": 300000 };
+  // 과목 카탈로그: 세그먼트 내 순서 = 수학A → 과학 → 수학B (초등은 수학B 없음)
+  const SEG = {
+    "초": [["수학 초등", "A"], ["과학 초등", ""]],
+    "중": [["수학 중등", "A"], ["과학 중등", ""], ["수학 중등", "B"]],
+    "고": [["수학 고등", "A"], ["과학 고등", ""], ["수학 고등", "B"]],
+  };
+  // 채우는 순서: 고=고→중→초, 중=중→고→초, 초=초→중→고
+  const ORDER = { "고": ["고", "중", "초"], "중": ["중", "고", "초"], "초": ["초", "중", "고"] };
+  function fillOrder(band) {
+    const segs = ORDER[band];
+    if (!segs) return [];
+    const list = [];
+    for (const lv of segs) for (const [t, r] of SEG[lv]) list.push({ target: t, room: r, price: PRICE[lv] });
+    return list;
+  }
+  function bandOf(g) {
+    const c = String(g).trim().charAt(0);
+    return (c === "초" || c === "중" || c === "고") ? c : null;
+  }
+  function decompose(P, band) {
+    const order = fillOrder(band);
+    let sum = 0; const used = [];
+    for (const c of order) { if (sum + c.price <= P) { sum += c.price; used.push(c); } else break; }
+    let jinhak = P - sum, overflow = 0;
+    if (jinhak > JMAX) { overflow = jinhak - JMAX; jinhak = JMAX; }
+    return { used, jinhak, overflow };
+  }
+
+  const won = (n) => Number(n).toLocaleString("ko-KR");
+  function esc(t) {
+    return String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  }
+  function parseCSV(text) {
+    text = text.replace(/^﻿/, "");
+    const rows = [];
+    text.split(/\r?\n/).forEach((line) => {
+      if (line === "") return;
+      const cells = []; let cur = "", q = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+        else { if (ch === ",") { cells.push(cur); cur = ""; } else if (ch === '"') q = true; else cur += ch; }
+      }
+      cells.push(cur); rows.push(cells);
+    });
+    return rows;
+  }
+  function monthFromName(fn) {
+    const m = fn.match(/(\d{4})[-_.\s]?(\d{2})(?!\d)/);
+    return m ? m[1] + "-" + m[2] : fn.replace(/\.csv$/i, "");
+  }
+
+  const drop2 = document.getElementById("drop2");
+  const files2 = document.getElementById("files2");
+  const receipts = document.getElementById("receipts");
+  const printbtn = document.getElementById("printbtn");
+  const status = document.getElementById("rc-status");
+
+  drop2.addEventListener("click", () => files2.click());
+  ["dragover", "dragenter"].forEach((e) =>
+    drop2.addEventListener(e, (ev) => { ev.preventDefault(); drop2.classList.add("hover"); }));
+  ["dragleave", "drop"].forEach((e) =>
+    drop2.addEventListener(e, () => drop2.classList.remove("hover")));
+  drop2.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    if (ev.dataTransfer.files.length) handleFiles(ev.dataTransfer.files);
+  });
+  files2.addEventListener("change", () => { if (files2.files.length) handleFiles(files2.files); });
+  printbtn.addEventListener("click", () => window.print());
+
+  function handleFiles(fileList) {
+    const files = [...fileList].filter((f) => /\.csv$/i.test(f.name));
+    if (!files.length) { status.textContent = "CSV 파일이 없습니다."; return; }
+    status.textContent = "읽는 중…";
+    Promise.all(files.map((f) => f.text().then((t) => ({ month: monthFromName(f.name), rows: parseCSV(t) }))))
+      .then((parsed) => build(parsed))
+      .catch((err) => { status.textContent = "오류: " + err.message; });
+  }
+
+  function build(parsed) {
+    // 학생별 { name, grade, months: [{month, total}] }
+    const students = new Map(); // key name|grade
+    let monthsSet = new Set(), warnGrade = 0, overflowList = [];
+
+    parsed.forEach(({ month, rows }) => {
+      monthsSet.add(month);
+      // 헤더 찾기
+      let hi = rows.findIndex((r) => r.includes("이름") && r.some((c) => c.indexOf("납부액") >= 0));
+      if (hi < 0) return;
+      const head = rows[hi].map((c) => c.trim());
+      const ci = { name: head.indexOf("이름"), grade: head.indexOf("학년"),
+        total: head.findIndex((c) => c.indexOf("납부액") >= 0) };
+      for (let i = hi + 1; i < rows.length; i++) {
+        const r = rows[i]; if (!r || ci.name < 0) continue;
+        const name = (r[ci.name] || "").trim();
+        if (!name) continue;
+        const grade = (r[ci.grade] || "").trim();
+        const total = Number(String(r[ci.total] || "0").replace(/[, ]/g, "")) || 0;
+        const key = name + "|" + grade;
+        if (!students.has(key)) students.set(key, { name, grade, months: [] });
+        students.get(key).months.push({ month, total });
+      }
+    });
+
+    const list = [...students.values()].sort((a, b) => {
+      const rk = (g) => ({ "초": 0, "중": 100, "고": 200 }[String(g).charAt(0)] ?? 900) +
+        (parseInt(String(g).replace(/\D/g, ""), 10) || 0);
+      return rk(a.grade) - rk(b.grade) || a.name.localeCompare(b.name, "ko");
+    });
+
+    let html = "", count = 0;
+    list.forEach((stu) => {
+      const band = bandOf(stu.grade);
+      stu.months.sort((a, b) => a.month.localeCompare(b.month));
+      html += '<div class="stu-head">' + esc(stu.name) + " (" + esc(stu.grade || "학년미상") + ") — 영수증 " +
+        stu.months.length + "장</div>";
+      if (!band) warnGrade++;
+      stu.months.forEach((mo) => {
+        const dec = decompose(mo.total, band);
+        if (dec.overflow > 0) overflowList.push(stu.name + " " + mo.month);
+        html += receiptHTML(stu, mo, band, dec);
+        count++;
+      });
+    });
+
+    receipts.innerHTML = html;
+    printbtn.disabled = count === 0;
+    let msg = "학생 " + list.length + "명 · 수납월 " + monthsSet.size + "개 · 영수증 " + count + "장";
+    if (warnGrade) msg += " · ⚠ 학년미상 " + warnGrade + "명(1단계에서 학년 입력 권장)";
+    if (overflowList.length) msg += " · ⚠ 한도초과 " + overflowList.length + "건";
+    status.textContent = msg;
+    receipts.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function receiptHTML(stu, mo, band, dec) {
+    const rows = [];
+    dec.used.forEach((c) => {
+      rows.push({ course: "보습", target: c.target, room: c.room, fee: c.price, note: "" });
+    });
+    if (dec.jinhak > 0) {
+      rows.push({ course: "진학지도", target: "진학지도", room: "", fee: dec.jinhak,
+        note: "정가 300,000원 → 할인 −" + won(JMAX - dec.jinhak) + "원" });
+    }
+    const feeSum = rows.reduce((a, r) => a + r.fee, 0);
+
+    let body = rows.map((r) =>
+      "<tr><td>" + esc(r.course) + "</td><td>" + esc(r.target) + "</td><td style='text-align:center'>" +
+      esc(r.room) + '</td><td class="n">' + won(r.fee) + '</td><td class="n">0</td><td class="n">' +
+      won(r.fee) + "</td><td style='font-size:.76rem'>" + esc(r.note) + "</td></tr>"
+    ).join("");
+    if (!rows.length) {
+      body = '<tr><td colspan="7" style="text-align:center;color:#b91c1c">' +
+        "학년(밴드) 정보가 없어 과목을 배정하지 못했습니다 — 1단계에서 학년을 입력해 주세요.</td></tr>";
+    }
+
+    const over = dec.overflow > 0
+      ? '<div class="rc-over">※ 신고 가능한 최대 금액(2,350,000원)을 ' + won(dec.overflow) +
+        "원 초과하여 초과분은 영수증에 표시되지 않았습니다.</div>" : "";
+
+    return '<div class="receipt">' +
+      '<div class="rc-formno">■ 학원의 설립·운영 및 과외교습에 관한 법률 시행규칙 [별지 제24호서식]</div>' +
+      '<div class="rc-title">교습비등 영수증</div>' +
+      '<table class="rc-meta"><tbody>' +
+        "<tr><th>학원(교습소)명</th><td>" + esc(ACADEMY.name) + "</td><th>등록번호</th><td>" + esc(ACADEMY.reg) + "</td></tr>" +
+        "<tr><th>소재지</th><td>" + esc(ACADEMY.addr) + "</td><th>전화번호</th><td>" + esc(ACADEMY.tel) + "</td></tr>" +
+        "<tr><th>설립·운영자</th><td>" + esc(ACADEMY.owner) + "</td><th>수납월</th><td>" + esc(mo.month) + "</td></tr>" +
+        "<tr><th>학습자 성명</th><td>" + esc(stu.name) + "</td><th>학년</th><td>" + esc(stu.grade || "-") + "</td></tr>" +
+      "</tbody></table>" +
+      '<table class="rc-items"><thead><tr>' +
+        "<th>교습과정</th><th>교습대상</th><th>개설반</th><th>교습비(A)</th><th>기타경비(B)</th><th>합계(A+B)</th><th>비고</th>" +
+      "</tr></thead><tbody>" + body +
+        '<tr class="sum"><td colspan="3" style="text-align:center">합 계</td><td class="n">' + won(feeSum) +
+        '</td><td class="n">0</td><td class="n">' + won(feeSum) + "</td><td></td></tr>" +
+      "</tbody></table>" +
+      '<div class="rc-note">※ 기타경비(모의고사비·교재비·재료비·피복비·급식비·기숙사비·차량비) 없음. ' +
+        "진학지도 교습비는 정가 300,000원에서 할인 적용된 금액입니다.</div>" + over +
+      '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br />' +
+        '<span style="letter-spacing:.1em">' + esc(mo.month) + "月</span></div>" +
+      '<div class="rc-sign">' + esc(ACADEMY.name) + " · " + esc(ACADEMY.owner) +
+        " &nbsp;(인)</div>" +
+      "</div>";
   }
 })();
 </script>
