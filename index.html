@@ -532,29 +532,41 @@
       }
     });
 
-    const list = [...students.values()].sort((a, b) => {
-      const rk = (g) => ({ "초": 0, "중": 100, "고": 200 }[String(g).charAt(0)] ?? 900) +
-        (parseInt(String(g).replace(/\D/g, ""), 10) || 0);
-      return rk(a.grade) - rk(b.grade) || a.name.localeCompare(b.name, "ko");
-    });
+    const list = [...students.values()];
+    // 날짜 정렬 키 — 값 없으면 맨 뒤로
+    const dkey = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? String(d) : "9999-99-99");
 
-    let html = "", count = 0;
-    const seqMap = {}; // 수납월별 일련번호 카운터
+    // (학생·월) 영수증 항목 모으기
+    const items = [];
+    const byMonth = {}; // 월별 일련번호 배정용
     list.forEach((stu) => {
       const band = bandOf(stu.grade);
-      stu.months.sort((a, b) => a.month.localeCompare(b.month));
-      html += '<div class="stu-head">' + esc(stu.name) + " (" + esc(stu.grade || "학년미상") + ") — 영수증 " +
-        stu.months.length + "장</div>";
       if (!band) warnGrade++;
       stu.months.forEach((mo) => {
         const dec = decompose(mo.total, band);
         if (dec.overflow > 0) overflowList.push(stu.name + " " + mo.month);
-        // 일련번호: 수납월 단위 발급번호(월마다 1, 2, 3 … 로 리셋), "YYYY-MM-NNN"
-        const seq = (seqMap[mo.month] = (seqMap[mo.month] || 0) + 1);
-        const serial = mo.month + "-" + String(seq).padStart(3, "0");
-        html += receiptHTML(stu, mo, band, dec, serial);
-        count++;
+        const it = { stu, mo, band, dec };
+        items.push(it);
+        (byMonth[mo.month] = byMonth[mo.month] || []).push(it);
       });
+    });
+
+    // 일련번호: 수납월별로 납부일 오름차순 순서대로 1, 2, 3 … 배정
+    Object.keys(byMonth).forEach((month) => {
+      byMonth[month]
+        .sort((a, b) => dkey(a.mo.rdate).localeCompare(dkey(b.mo.rdate)) ||
+          a.stu.name.localeCompare(b.stu.name, "ko"))
+        .forEach((it, i) => { it.serial = month + "-" + String(i + 1).padStart(3, "0"); });
+    });
+
+    // 전체 출력 순서: 납부일 오름차순(오래된 날짜가 1페이지), 동일하면 월·이름 순
+    items.sort((a, b) => dkey(a.mo.rdate).localeCompare(dkey(b.mo.rdate)) ||
+      a.mo.month.localeCompare(b.mo.month) || a.stu.name.localeCompare(b.stu.name, "ko"));
+
+    let html = "", count = 0;
+    items.forEach((it) => {
+      html += receiptHTML(it.stu, it.mo, it.band, it.dec, it.serial);
+      count++;
     });
 
     receipts.innerHTML = html;
