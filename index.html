@@ -154,7 +154,10 @@
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
+        // cellDates는 쓰지 않는다: 브라우저 로컬 타임존에 따라 날짜가 하루/한 달
+        // 밀리는 문제가 있어(예: KST에서 2025-08-01 → 2025-07), 날짜는 엑셀 serial
+        // 숫자 그대로 받아 XLSX.SSF로 파싱한다(타임존 무관).
+        const wb = XLSX.read(e.target.result, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
         lastRows = rows;
