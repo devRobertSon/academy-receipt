@@ -168,7 +168,7 @@
   }
 
   // ---- column detection ----
-  const HEADERS = { no:"NO", cls:"반", name:"이름", grade:"학년", month:"수납월", amount:"납부액", status:"상태" };
+  const HEADERS = { no:"NO", cls:"반", name:"이름", grade:"학년", month:"수납월", amount:"납부액", status:"상태", payDate:"납부일" };
   function findHeader(rows) {
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
       const r = rows[i].map((c) => String(c).trim());
@@ -199,6 +199,19 @@
     }
     const m = String(v).match(/(\d{4})[-.\/\s]+(\d{1,2})/);
     return m ? m[1] + "-" + m[2].padStart(2, "0") : String(v).trim();
+  }
+
+  // 납부일 → "YYYY-MM-DD"
+  function fmtDate(v) {
+    if (v == null || v === "") return "";
+    if (v instanceof Date) return v.getFullYear() + "-" +
+      String(v.getMonth() + 1).padStart(2, "0") + "-" + String(v.getDate()).padStart(2, "0");
+    if (typeof v === "number" && XLSX.SSF) {
+      const d = XLSX.SSF.parse_date_code(v);
+      if (d && d.y) return d.y + "-" + String(d.m).padStart(2, "0") + "-" + String(d.d).padStart(2, "0");
+    }
+    const m = String(v).match(/(\d{4})[-.\/]\s*(\d{1,2})[-.\/]\s*(\d{1,2})/);
+    return m ? m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0") : "";
   }
 
   function gradeRank(g) {
@@ -234,6 +247,7 @@
         grade: s(data[i][idx.grade]),
         amount: toNumber(data[i][idx.amount]),
         status: s(data[i][idx.status]),
+        payDate: idx.payDate >= 0 ? fmtDate(data[i][idx.payDate]) : "",
         roster,
       });
     }
@@ -268,7 +282,9 @@
           hit.recs.push(r);
         }
         for (const c of clusters) {
-          students.push({ name, grade, total: c.recs.reduce((a, r) => a + r.amount, 0) });
+          // 영수일자 = 해당 학생·월 결제들 중 가장 늦은 납부일
+          const payDate = c.recs.reduce((mx, r) => (r.payDate > mx ? r.payDate : mx), "");
+          students.push({ name, grade, total: c.recs.reduce((a, r) => a + r.amount, 0), payDate });
         }
       }
     }
@@ -385,9 +401,9 @@
     return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   }
   function downloadMonth(m) {
-    const lines = ["번호,이름,학년,납부액총합"];
+    const lines = ["번호,이름,학년,납부액총합,영수일자"];
     m.students.forEach((st, i) =>
-      lines.push([i + 1, csvCell(st.name), csvCell(st.grade), st.total].join(","))
+      lines.push([i + 1, csvCell(st.name), csvCell(st.grade), st.total, csvCell(st.payDate || "")].join(","))
     );
     const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -502,16 +518,17 @@
       if (hi < 0) return;
       const head = rows[hi].map((c) => c.trim());
       const ci = { name: head.indexOf("이름"), grade: head.indexOf("학년"),
-        total: head.findIndex((c) => c.indexOf("납부액") >= 0) };
+        total: head.findIndex((c) => c.indexOf("납부액") >= 0), rdate: head.indexOf("영수일자") };
       for (let i = hi + 1; i < rows.length; i++) {
         const r = rows[i]; if (!r || ci.name < 0) continue;
         const name = (r[ci.name] || "").trim();
         if (!name) continue;
         const grade = (r[ci.grade] || "").trim();
         const total = Number(String(r[ci.total] || "0").replace(/[, ]/g, "")) || 0;
+        const rdate = ci.rdate >= 0 ? (r[ci.rdate] || "").trim() : "";
         const key = name + "|" + grade;
         if (!students.has(key)) students.set(key, { name, grade, months: [] });
-        students.get(key).months.push({ month, total });
+        students.get(key).months.push({ month, total, rdate });
       }
     });
 
@@ -532,9 +549,9 @@
       stu.months.forEach((mo) => {
         const dec = decompose(mo.total, band);
         if (dec.overflow > 0) overflowList.push(stu.name + " " + mo.month);
-        // 일련번호: 원서식 지침대로 1년 단위 발급번호(1, 2, 3 …)
-        const yr = (String(mo.month).match(/^(\d{4})/) || [])[1] || String(mo.month);
-        const serial = String(seqMap[yr] = (seqMap[yr] || 0) + 1);
+        // 일련번호: 수납월 단위 발급번호(월마다 1, 2, 3 … 로 리셋), "YYYY-MM-NNN"
+        const seq = (seqMap[mo.month] = (seqMap[mo.month] || 0) + 1);
+        const serial = mo.month + "-" + String(seq).padStart(3, "0");
         html += receiptHTML(stu, mo, band, dec, serial);
         count++;
       });
@@ -553,6 +570,11 @@
     const ym = String(mo.month).match(/^(\d{4})-(\d{2})$/);
     const ymLabel = ym ? ym[1] + "년 " + ym[2] + "월" : mo.month;
     const ymBun = ym ? ym[1] + "년 " + parseInt(ym[2], 10) + "월분" : mo.month;
+    // 영수일자: CSV의 값(YYYY-MM-DD)을 "YYYY년 M월 D일"로. 없으면 연·월만, 일은 공란.
+    const rd = String(mo.rdate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const rdateLabel = rd
+      ? rd[1] + "년 " + parseInt(rd[2], 10) + "월 " + parseInt(rd[3], 10) + "일"
+      : (ym ? ym[1] + "년 " + parseInt(ym[2], 10) + "월 &nbsp;&nbsp;&nbsp; 일" : esc(ymLabel));
     const rows = [];
     dec.used.forEach((c) => {
       rows.push({ course: "보습", target: c.target, room: c.room, fee: c.price, note: "" });
@@ -597,9 +619,7 @@
       '<div class="rc-note">※ 기타경비(모의고사비·교재비·재료비·피복비·급식비·기숙사비·차량비) 없음. ' +
         "진학지도 교습비는 정가 300,000원에서 할인 적용된 금액입니다.</div>" + over +
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br />' +
-        '<span style="letter-spacing:.1em">영수일자 : ' +
-        (ym ? ym[1] + "년 " + parseInt(ym[2], 10) + "월 &nbsp;&nbsp;&nbsp; 일" : esc(ymLabel)) +
-        "</span></div>" +
+        '<span style="letter-spacing:.1em">영수일자 : ' + rdateLabel + "</span></div>" +
       '<div class="rc-sign">' + esc(ACADEMY.name) + " · " + esc(ACADEMY.owner) +
         " &nbsp;(인)</div>" +
       "</div>";
