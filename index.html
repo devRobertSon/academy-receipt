@@ -37,6 +37,18 @@
   details > summary { cursor: pointer; color: #2563eb; font-size: .9rem; }
   .err { color: #b91c1c; white-space: pre-wrap; }
   .muted { color: #888; font-size: .85rem; }
+  .review { background: rgba(234,179,8,.12); border: 1px solid rgba(234,179,8,.5);
+    border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+  .review h3 { margin: 0 0 6px; font-size: .95rem; color: #a16207; }
+  .review .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+  .review .row .nm { min-width: 90px; font-weight: 600; }
+  .review input { padding: 4px 8px; border: 1px solid #bbb; border-radius: 6px; font-size: .9rem; width: 90px; }
+  .review input.bad { border-color: #dc2626; background: rgba(220,38,38,.06); }
+  .review input.good { border-color: #16a34a; background: rgba(22,163,74,.06); }
+  .badge { display: inline-block; background: #dc2626; color: #fff; border-radius: 10px;
+    padding: 1px 8px; font-size: .78rem; margin-left: 6px; }
+  .badge.ok { background: #16a34a; }
+  td.warn { background: rgba(234,179,8,.18); }
 </style>
 
 <h1>수강료 납부 현황 집계 — 1단계</h1>
@@ -138,6 +150,11 @@
     const base = { "초": 0, "중": 100, "고": 200 }[m && m[1]] ?? 900;
     return base + (m && m[2] ? parseInt(m[2], 10) : 0);
   }
+  // 학년으로 밴드(초/중/고) 판별 — 2단계 영수증에서 반드시 필요
+  function bandOf(g) {
+    const c = String(g).trim().charAt(0);
+    return (c === "초" || c === "중" || c === "고") ? c : null;
+  }
 
   // 결제건(NO 채워진 행) 추출 — 수납월과 반 목록 포함
   function extractRecords(rows) {
@@ -237,23 +254,64 @@
     }
     monthsData.forEach((m, mi) => {
       const grand = m.students.reduce((a, x) => a + x.total, 0);
-      html += '<div class="month"><h2>수납월 ' + esc(m.key) + "</h2>";
+      const review = m.students.filter((st) => !bandOf(st.grade));
+      html += '<div class="month"><h2>수납월 ' + esc(m.key) +
+        (review.length ? '<span class="badge" data-mi="' + mi + '">확인 필요 ' + review.length + "명</span>" : "") +
+        "</h2>";
       html += '<div class="summary">' +
         "<span><b>학생 수</b> " + m.students.length + "명</span>" +
         "<span><b>납부액 총합</b> " + grand.toLocaleString("ko-KR") + "원</span>" +
         "<span><b>결제건</b> " + m.recordCount + "건</span>" +
         "</div>";
+
+      if (review.length) {
+        html += '<div class="review"><h3>⚠ 학년을 확인할 수 없는 학생 ' + review.length +
+          "명 — 직접 입력하면 CSV·영수증에 반영됩니다</h3>" +
+          '<p class="muted" style="margin:2px 0 8px">예: 초6, 중2, 고1 (초/중/고로 시작). 비워두면 학년 없이 저장됩니다.</p>';
+        review.forEach((st) => {
+          const si = m.students.indexOf(st);
+          html += '<div class="row"><span class="nm">' + esc(st.name) + "</span>" +
+            '<span class="muted">' + st.total.toLocaleString("ko-KR") + "원</span>" +
+            '<input class="gin bad" data-mi="' + mi + '" data-si="' + si +
+            '" value="' + esc(st.grade) + '" placeholder="학년 입력" /></div>';
+        });
+        html += "</div>";
+      }
+
       html += '<button class="sm dl" data-mi="' + mi + '">CSV 다운로드 (' + esc(m.key) + ")</button>";
       html += '<details><summary>미리보기 (' + m.students.length + "명)</summary>" +
         '<div class="wrap"><table><thead><tr>' +
         "<th>번호</th><th>이름</th><th>학년</th><th>납부액총합</th></tr></thead><tbody>";
       m.students.forEach((st, i) => {
-        html += "<tr><td>" + (i + 1) + "</td><td>" + esc(st.name) + "</td><td>" +
-          esc(st.grade) + '</td><td class="num">' + st.total.toLocaleString("ko-KR") + "</td></tr>";
+        html += "<tr><td>" + (i + 1) + "</td><td>" + esc(st.name) + "</td>" +
+          '<td class="gcell' + (bandOf(st.grade) ? "" : " warn") + '" data-mi="' + mi +
+          '" data-si="' + i + '">' + esc(st.grade) +
+          '</td><td class="num">' + st.total.toLocaleString("ko-KR") + "</td></tr>";
       });
       html += "</tbody></table></div></details></div>";
     });
     out.innerHTML = html;
+
+    // 학년 직접 입력 → 데이터·미리보기·배지에 실시간 반영
+    out.querySelectorAll("input.gin").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const m = monthsData[+inp.dataset.mi];
+        const st = m.students[+inp.dataset.si];
+        st.grade = inp.value.trim();
+        const ok = !!bandOf(st.grade);
+        inp.classList.toggle("good", ok);
+        inp.classList.toggle("bad", !ok);
+        const cell = out.querySelector(
+          'td.gcell[data-mi="' + inp.dataset.mi + '"][data-si="' + inp.dataset.si + '"]');
+        if (cell) { cell.textContent = st.grade; cell.classList.toggle("warn", !ok); }
+        const left = m.students.filter((s) => !bandOf(s.grade)).length;
+        const badge = out.querySelector('.badge[data-mi="' + inp.dataset.mi + '"]');
+        if (badge) {
+          badge.textContent = left ? "확인 필요 " + left + "명" : "확인 완료";
+          badge.classList.toggle("ok", left === 0);
+        }
+      });
+    });
 
     out.querySelectorAll("button.dl").forEach((b) =>
       b.addEventListener("click", () => downloadMonth(monthsData[+b.dataset.mi]))
