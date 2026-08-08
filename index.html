@@ -67,7 +67,7 @@
   .rc-meta th, .rc-meta td { border: 1px solid #555; padding: 5px 9px; text-align: left; }
   .rc-meta th { background: #f1f1f1; white-space: nowrap; width: 92px; }
   .rc-items { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .84rem; }
-  .rc-items th, .rc-items td { border: 1px solid #555; padding: 5px 9px; }
+  .rc-items th, .rc-items td { border: 1px solid #555; padding: 5px 9px; white-space: nowrap; }
   .rc-items th { background: #f1f1f1; text-align: center; }
   .rc-items td.n { text-align: right; font-variant-numeric: tabular-nums; }
   .rc-items tr.sum td { font-weight: 700; background: #fafafa; }
@@ -75,6 +75,9 @@
   .rc-over { font-size: .8rem; color: #b91c1c !important; font-weight: 600; }
   .rc-foot { margin-top: 16px; text-align: center; font-size: .92rem; line-height: 2.1; }
   .rc-sign { margin-top: 6px; text-align: right; font-size: .9rem; }
+  .rc-seal { height: 48px; width: auto; vertical-align: middle; margin-left: 8px; }
+  #sealprev { height: 32px; vertical-align: middle; border: 1px solid #ddd; border-radius: 4px; }
+  .sealctl { font-size: .85rem; color: #555; }
   .stu-head { max-width: 760px; margin: 18px auto 4px; font-weight: 700; color: #2563eb; }
 
   @media print {
@@ -118,6 +121,12 @@
 
 <div class="bar">
   <button id="printbtn" disabled>🖨 인쇄 / PDF 저장</button>
+  <span class="sealctl">도장(인):
+    <input id="sealfile" type="file" accept="image/*" hidden />
+    <button id="sealbtn" class="sm" type="button">이미지 선택</button>
+  </span>
+  <img id="sealprev" alt="" style="display:none" />
+  <button id="sealclear" class="sm" type="button" style="display:none">지우기</button>
   <span id="rc-status" class="muted"></span>
 </div>
 </div><!-- /.screen -->
@@ -487,6 +496,44 @@
   const receipts = document.getElementById("receipts");
   const printbtn = document.getElementById("printbtn");
   const status = document.getElementById("rc-status");
+  const sealfile = document.getElementById("sealfile");
+  const sealbtn = document.getElementById("sealbtn");
+  const sealprev = document.getElementById("sealprev");
+  const sealclear = document.getElementById("sealclear");
+
+  // 도장(인) 이미지
+  //  우선순위: (1) 페이지에서 직접 등록한 이미지(localStorage) > (2) 저장소의 seal.png
+  //  둘 다 없으면 이미지 로드 실패 시 "(인)" 텍스트로 폴백한다.
+  const REPO_SEAL = "seal.png";
+  window.__sealErr = function (img) { img.replaceWith(document.createTextNode("(인)")); };
+  let sealUrl = "";
+  try { sealUrl = localStorage.getItem("sealDataUrl") || ""; } catch (e) {}
+  let lastParsed = null; // 도장 변경 시 재렌더용
+
+  function refreshSealUI() {
+    if (sealUrl) { sealprev.src = sealUrl; sealprev.style.display = ""; sealclear.style.display = ""; sealbtn.textContent = "이미지 변경"; }
+    else { sealprev.style.display = "none"; sealclear.style.display = "none"; sealbtn.textContent = "이미지 선택"; }
+  }
+  refreshSealUI();
+  sealbtn.addEventListener("click", () => sealfile.click());
+  sealfile.addEventListener("change", () => {
+    const f = sealfile.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      sealUrl = rd.result;
+      try { localStorage.setItem("sealDataUrl", sealUrl); } catch (e) {}
+      refreshSealUI();
+      if (lastParsed) build(lastParsed);
+    };
+    rd.readAsDataURL(f);
+  });
+  sealclear.addEventListener("click", () => {
+    sealUrl = "";
+    try { localStorage.removeItem("sealDataUrl"); } catch (e) {}
+    sealfile.value = "";
+    refreshSealUI();
+    if (lastParsed) build(lastParsed);
+  });
 
   drop2.addEventListener("click", () => files2.click());
   ["dragover", "dragenter"].forEach((e) =>
@@ -505,7 +552,7 @@
     if (!files.length) { status.textContent = "CSV 파일이 없습니다."; return; }
     status.textContent = "읽는 중…";
     Promise.all(files.map((f) => f.text().then((t) => ({ month: monthFromName(f.name), rows: parseCSV(t) }))))
-      .then((parsed) => build(parsed))
+      .then((parsed) => { lastParsed = parsed; build(parsed); })
       .catch((err) => { status.textContent = "오류: " + err.message; });
   }
 
@@ -596,7 +643,7 @@
     });
     if (dec.jinhak > 0) {
       rows.push({ course: "진학지도", target: "진학지도", room: "", fee: dec.jinhak,
-        note: "정가 300,000원 → 할인 −" + won(JMAX - dec.jinhak) + "원" });
+        note: "할인 −" + won(JMAX - dec.jinhak) + "원" });
     }
     const feeSum = rows.reduce((a, r) => a + r.fee, 0);
 
@@ -636,7 +683,8 @@
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br />' +
         '<span style="letter-spacing:.1em">영수일자 : ' + rdateLabel + "</span></div>" +
       '<div class="rc-sign">' + esc(ACADEMY.name) + " · " + esc(ACADEMY.owner) +
-        " &nbsp;(인)</div>" +
+        ' <img class="rc-seal" src="' + (sealUrl || REPO_SEAL) + '" alt="(인)" onerror="__sealErr(this)" />' +
+        "</div>" +
       "</div>";
   }
 })();
