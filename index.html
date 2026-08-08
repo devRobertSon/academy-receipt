@@ -501,7 +501,11 @@
   const sealprev = document.getElementById("sealprev");
   const sealclear = document.getElementById("sealclear");
 
-  // 도장(인) 이미지 — 브라우저에 저장해 (인) 자리에 자동 표시
+  // 도장(인) 이미지
+  //  우선순위: (1) 페이지에서 직접 등록한 이미지(localStorage) > (2) 저장소의 seal.png
+  //  둘 다 없으면 이미지 로드 실패 시 "(인)" 텍스트로 폴백한다.
+  const REPO_SEAL = "seal.png";
+  window.__sealErr = function (img) { img.replaceWith(document.createTextNode("(인)")); };
   let sealUrl = "";
   try { sealUrl = localStorage.getItem("sealDataUrl") || ""; } catch (e) {}
   let lastParsed = null; // 도장 변경 시 재렌더용
@@ -679,7 +683,7 @@
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br />' +
         '<span style="letter-spacing:.1em">영수일자 : ' + rdateLabel + "</span></div>" +
       '<div class="rc-sign">' + esc(ACADEMY.name) + " · " + esc(ACADEMY.owner) +
-        (sealUrl ? ' <img class="rc-seal" src="' + sealUrl + '" alt="(인)" />' : " &nbsp;(인)") +
+        ' <img class="rc-seal" src="' + (sealUrl || REPO_SEAL) + '" alt="(인)" onerror="__sealErr(this)" />' +
         "</div>" +
       "</div>";
   }
