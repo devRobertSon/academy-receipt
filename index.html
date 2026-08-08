@@ -67,7 +67,7 @@
   .rc-meta th, .rc-meta td { border: 1px solid #555; padding: 5px 9px; text-align: left; }
   .rc-meta th { background: #f1f1f1; white-space: nowrap; width: 92px; }
   .rc-items { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .84rem; }
-  .rc-items th, .rc-items td { border: 1px solid #555; padding: 5px 9px; }
+  .rc-items th, .rc-items td { border: 1px solid #555; padding: 5px 9px; white-space: nowrap; }
   .rc-items th { background: #f1f1f1; text-align: center; }
   .rc-items td.n { text-align: right; font-variant-numeric: tabular-nums; }
   .rc-items tr.sum td { font-weight: 700; background: #fafafa; }
@@ -596,7 +596,7 @@
     });
     if (dec.jinhak > 0) {
       rows.push({ course: "진학지도", target: "진학지도", room: "", fee: dec.jinhak,
-        note: "정가 300,000원 → 할인 −" + won(JMAX - dec.jinhak) + "원" });
+        note: "할인 −" + won(JMAX - dec.jinhak) + "원" });
     }
     const feeSum = rows.reduce((a, r) => a + r.fee, 0);
 
