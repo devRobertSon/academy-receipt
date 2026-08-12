@@ -136,9 +136,9 @@
     let hi=rows.findIndex((r)=>r.map((c)=>c.trim()).includes("키워드"));
     if(hi<0) hi=0;
     const head=rows[hi].map((c)=>c.trim());
-    const ci={kw:head.indexOf("키워드"), sub:head.indexOf("교습과목"), price:head.indexOf("정가")};
+    const ci={kw:head.indexOf("키워드"), sub:head.indexOf("교습과목"), room:head.indexOf("세부반")};
     for(let i=hi+1;i<rows.length;i++){ const r=rows[i]; if(!r||!s(r[ci.kw]))continue;
-      MAPPING.push({ kw:s(r[ci.kw]), subject:s(r[ci.sub])||"기타", price:toNumber(ci.price>=0?r[ci.price]:0) }); }
+      MAPPING.push({ kw:s(r[ci.kw]), subject:s(r[ci.sub])||"기타", room:ci.room>=0?s(r[ci.room]):"" }); }
     MAPPING.sort((a,b)=> b.kw.length-a.kw.length); // 긴 키워드 우선
     mapStatusEl.textContent = "매핑 로드됨: "+MAPPING.length+"개 키워드 (수납항목매핑.csv)";
   }).catch(()=>{ mapStatusEl.innerHTML = '<span class="err">수납항목매핑.csv 를 불러오지 못했습니다 — 저장소 루트에 두세요. (없으면 모두 미분류로 표시됩니다)</span>'; });
@@ -199,10 +199,10 @@
   const isEtc = (item) => item.replace(/\s/g,"") === "기타수납";
   function resolve(rec){
     if(overridesById[rec.id]) return { ...overridesById[rec.id], matched:true };
-    if(isEtc(rec.item)) return { subject:"", keyword:"", price:0, matched:false, perRecord:true };
+    if(isEtc(rec.item)) return { subject:"", room:"", matched:false, perRecord:true };
     if(overrides[rec.item]) return { ...overrides[rec.item], matched:true };
-    for(const m of MAPPING){ if(rec.item.indexOf(m.kw)>=0) return { subject:m.subject, keyword:m.kw, price:m.price, matched:true }; }
-    return { subject:"", keyword:"", price:0, matched:false, perRecord:false };
+    for(const m of MAPPING){ if(rec.item.indexOf(m.kw)>=0) return { subject:m.subject, room:m.room||m.kw, matched:true }; }
+    return { subject:"", room:"", matched:false, perRecord:false };
   }
 
   function process(){
@@ -254,22 +254,20 @@
   function renderManualGate(stringItems, perRecs){
     let h='<div class="gate"><h2>⚠ 영수증 생성 전 입력 필요</h2>';
     if(stringItems.length){
-      h+='<p class="muted"><b>미분류 수납항목 '+stringItems.length+'종</b> — 교습과목/세부반명(개설반 표기)/정가</p>'+
-        '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반명</th><th>정가</th></tr></thead><tbody>';
+      h+='<p class="muted"><b>미분류 수납항목 '+stringItems.length+'종</b> — 교습과목(예: 수학 중등 A / 과학 고등)과 세부반</p>'+
+        '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
       stringItems.forEach((it,i)=>{ h+='<tr><td>'+esc(it)+'</td>'+
         '<td><input data-t="str" data-i="'+i+'" data-f="subject" value=""></td>'+
-        '<td><input data-t="str" data-i="'+i+'" data-f="keyword" value=""></td>'+
-        '<td><input class="num" data-t="str" data-i="'+i+'" data-f="price" value="0"></td></tr>'; });
+        '<td><input data-t="str" data-i="'+i+'" data-f="room" value=""></td></tr>'; });
       h+='</tbody></table></div>';
     }
     if(perRecs.length){
       h+='<p class="muted"><b>기타수납 '+perRecs.length+'건</b> — 각 건을 실제 교습과목으로 입력하세요. (기타수납으로는 영수증이 나오지 않습니다)</p>'+
-        '<div class="wrap"><table><thead><tr><th>학생</th><th>수납월</th><th>납부액</th><th>납부일</th><th>교습과목</th><th>세부반명</th><th>정가</th></tr></thead><tbody>';
+        '<div class="wrap"><table><thead><tr><th>학생</th><th>수납월</th><th>납부액</th><th>납부일</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
       perRecs.forEach((r)=>{ h+='<tr><td>'+esc(r.name)+' <span class="muted">'+esc(r.grade)+'</span></td><td>'+esc(r.month)+'</td>'+
         '<td style="text-align:right">'+won(r.amount)+'</td><td>'+esc(r.payDate||"-")+'</td>'+
         '<td><input data-t="rec" data-id="'+r.id+'" data-f="subject" value=""></td>'+
-        '<td><input data-t="rec" data-id="'+r.id+'" data-f="keyword" value=""></td>'+
-        '<td><input class="num" data-t="rec" data-id="'+r.id+'" data-f="price" value="'+r.amount+'"></td></tr>'; });
+        '<td><input data-t="rec" data-id="'+r.id+'" data-f="room" value=""></td></tr>'; });
       h+='</tbody></table></div>';
     }
     h+='<div class="bar"><button id="mgok">이대로 진행</button>'+
@@ -283,8 +281,8 @@
         (recMap[id]=recMap[id]||{id:id})[inp.dataset.f]=inp.value.trim(); });
       const strVals=Object.values(strMap), recVals=Object.values(recMap);
       if(strVals.some((v)=>!v.subject) || recVals.some((v)=>!v.subject)){ alert("교습과목을 모두 입력해 주세요."); return; }
-      strVals.forEach((v)=>{ overrides[v.item]={ subject:v.subject, keyword:v.keyword||"", price:toNumber(v.price) }; });
-      recVals.forEach((v)=>{ overridesById[v.id]={ subject:v.subject, keyword:v.keyword||"", price:toNumber(v.price) }; });
+      strVals.forEach((v)=>{ overrides[v.item]={ subject:v.subject, room:v.room||"" }; });
+      recVals.forEach((v)=>{ overridesById[v.id]={ subject:v.subject, room:v.room||"" }; });
       process();
     });
   }
@@ -315,39 +313,34 @@
     const byMonth={}; const items=[];
     Object.keys(map).forEach((sk)=>{ const name=sk.split("|")[0];
       Object.keys(map[sk]).forEach((month)=>{ const raw=map[sk][month];
-        const band=bandFromGrade((raw[0]||{}).grade);
         const fin=raw.map((l)=>{ const fsub=finalizeSubject(l.subject,l.grade);
-          return { fsub, keyword:l.keyword||"", amount:l.amount, payDate:l.payDate,
+          return { fsub, room:l.room||"", amount:l.amount, payDate:l.payDate,
             isEtc:fsub==="기타경비", isMath:/^수학/.test(fsub) }; });
         const rdate=fin.reduce((mx,l)=>(dkey(l.payDate)>dkey(mx)?l.payDate:mx), "");
         const out=[];
 
-        // ① 과학·진학지도 등(수학·기타경비 제외): 실제 라인, 개설반 A/B
+        // ① 과학·진학지도 등: 항목별 실제 라인, 개설반(세부반) 같으면 A/B
         const others=fin.filter((l)=>!l.isMath && !l.isEtc);
-        const grp={}; others.forEach((l)=>{ const g=l.fsub+"|"+l.keyword; (grp[g]=grp[g]||[]).push(l); });
+        const grp={}; others.forEach((l)=>{ const g=l.fsub+"|"+l.room; (grp[g]=grp[g]||[]).push(l); });
         Object.values(grp).forEach((g)=>{ if(g.length>=2) g.forEach((l,i)=>l._ab=" "+String.fromCharCode(65+i)); });
-        others.forEach((l)=> out.push({ subject:l.fsub, room:(l.keyword||"")+(l._ab||""), amount:l.amount, isEtc:false, note:"" }));
+        others.forEach((l)=> out.push({ subject:l.fsub, room:(l.room||"")+(l._ab||""), amount:l.amount, isEtc:false, note:"" }));
 
-        // ② 수학: 학생 수학 납부액 합산 → 학년 밴드 정가로 분배
-        const mathSum=fin.filter((l)=>l.isMath).reduce((a,l)=>a+l.amount,0);
-        if(mathSum>0){
-          const u=PRICE_TABLE["수학 "+band]||0;
-          if(u>0){
-            const slots=band==="초등"?1:2;   // 수학 초등=A만, 중·고=A/B (C·D·E 없음, A/B 반복)
-            const AB=(i)=>String.fromCharCode(65+(i%slots));
-            const k=Math.floor(mathSum/u), r=mathSum-k*u, n=k+(r>0?1:0);
-            for(let i=0;i<k;i++) out.push({ subject:"수학 "+band+" "+AB(i), room:"", amount:u, isEtc:false,
-              note:n>=2?"중복수강 할인 −50,000원":"" });
-            if(r>0){ const notes=[]; if(n>=2) notes.push("중복수강 할인 −50,000원");
-              notes.push("중복시간 할인 −"+won(u-r)+"원");
-              out.push({ subject:"수학 "+band+" "+AB(k), room:"", amount:r, isEtc:false, note:notes.join(" / ") }); }
-          } else {
-            out.push({ subject:"수학", room:"", amount:mathSum, isEtc:false, note:"" }); // 학년미상
-          }
-        }
+        // ② 수학: 항목별 (교습과목+세부반) 그룹 합산 → 정가 대비 중복수강/중복시간 할인
+        const mgroups={};
+        fin.filter((l)=>l.isMath).forEach((l)=>{ const room=l.room||"교과"; const key=l.fsub+"|"+room;
+          if(!mgroups[key]) mgroups[key]={ subject:l.fsub, room, amount:0 }; mgroups[key].amount+=l.amount; });
+        const mathLines=Object.values(mgroups); const nMath=mathLines.length;
+        mathLines.forEach((ml)=>{
+          const level=ml.subject.replace(/ [AB]$/,"");          // "수학 중등"
+          const price=PRICE_TABLE[level]||0;
+          const diff=price-ml.amount; const notes=[];
+          if(nMath>=2 && diff>0){ const jung=Math.min(50000,diff); notes.push("중복수강 할인 −"+won(jung)+"원");
+            const sigan=diff-jung; if(sigan>0) notes.push("중복시간 할인 −"+won(sigan)+"원"); }
+          out.push({ subject:ml.subject, room:ml.room, amount:ml.amount, isEtc:false, note:notes.join(" / ") });
+        });
 
         // ③ 기타경비(식사비 등)
-        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.keyword||"식사비", amount:l.amount, isEtc:true, note:"" }));
+        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.room||"식사비", amount:l.amount, isEtc:true, note:"" }));
 
         const it={ name, month, rdate, lines: out };
         items.push(it); (byMonth[month]=byMonth[month]||[]).push(it);
