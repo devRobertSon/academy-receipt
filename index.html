@@ -173,9 +173,10 @@
   excludeRefund.addEventListener("change", ()=>{ if(ALL.length) rebuildRecords(); });
 
   const HEADERS={ no:"NO", name:"이름", grade:"학년", month:"수납월", item:"수납항목", amount:"납부액", status:"상태", payDate:"납부일" };
-  let ALL=[];        // raw payment records from all files
-  let overrides={};  // 미분류 수기입력: item -> {subject, keyword, price}
-  let splitMap={};   // 동명이인 분리: recordId -> personNo (>=1)
+  let ALL=[];          // raw payment records from all files
+  let overrides={};    // 미분류(항목명 기준) 수기입력: item -> {subject, keyword, price}
+  let overridesById={};// 기타수납 등 건별 수기입력: recordId -> {subject, keyword, price}
+  let splitMap={};     // 동명이인 분리: recordId -> personNo (>=1)
   let splitConfirmed=false;
 
   function handleFiles(fileList){
@@ -183,7 +184,7 @@
     if(!files.length){ statusEl.textContent="엑셀 파일이 없습니다."; return; }
     statusEl.textContent="읽는 중…";
     Promise.all(files.map((f)=> f.arrayBuffer().then((buf)=>({name:f.name, buf})))).then((arr)=>{
-      ALL=[]; overrides={}; splitMap={}; splitConfirmed=false;
+      ALL=[]; overrides={}; overridesById={}; splitMap={}; splitConfirmed=false;
       arr.forEach(({buf})=>{
         const wb=XLSX.read(buf,{type:"array"}); // cellDates 미사용(타임존 안전)
         const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
@@ -204,10 +205,14 @@
 
   function rebuildRecords(){ splitMap={}; splitConfirmed=false; process(); }
 
-  function resolve(item){
-    if(overrides[item]) return { ...overrides[item], matched:true };
-    for(const m of MAPPING){ if(item.indexOf(m.kw)>=0) return { subject:m.subject, keyword:m.kw, price:m.price, matched:true }; }
-    return { subject:"", keyword:"", price:0, matched:false };
+  // 기타수납은 자동 매핑하지 않고 항상 건별 수기입력(perRecord) 대상으로 둔다.
+  const isEtc = (item) => item.replace(/\s/g,"") === "기타수납";
+  function resolve(rec){
+    if(overridesById[rec.id]) return { ...overridesById[rec.id], matched:true };
+    if(isEtc(rec.item)) return { subject:"", keyword:"", price:0, matched:false, perRecord:true };
+    if(overrides[rec.item]) return { ...overrides[rec.item], matched:true };
+    for(const m of MAPPING){ if(rec.item.indexOf(m.kw)>=0) return { subject:m.subject, keyword:m.kw, price:m.price, matched:true }; }
+    return { subject:"", keyword:"", price:0, matched:false, perRecord:false };
   }
 
   function process(){
@@ -216,12 +221,13 @@
     // 유효 결제 + 매핑
     const recs=[];
     ALL.forEach((r,i)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
-      recs.push({ id:i, ...r, ...resolve(r.item) }); });
+      const rec={ id:i, ...r }; recs.push({ ...rec, ...resolve(rec) }); });
 
-    // 1) 미분류 게이트
-    const unmatched=[...new Set(recs.filter((r)=>!r.matched).map((r)=>r.item))];
-    if(unmatched.length){ renderUnmatchedGate(unmatched); receipts.innerHTML=""; printbtn.disabled=true;
-      statusEl.textContent="미분류 "+unmatched.length+"종 입력 필요"; return; }
+    // 1) 수기입력 게이트 — 미분류(항목명) + 기타수납(건별)
+    const needStr=[...new Set(recs.filter((r)=>!r.matched && !r.perRecord).map((r)=>r.item))];
+    const needRec=recs.filter((r)=>!r.matched && r.perRecord);
+    if(needStr.length || needRec.length){ renderManualGate(needStr, needRec); receipts.innerHTML=""; printbtn.disabled=true;
+      statusEl.textContent="입력 필요: 미분류 "+needStr.length+"종, 기타수납 "+needRec.length+"건"; return; }
 
     // 2) 동명이인 게이트 (같은 이름+학년에서 동일 수납항목이 그 달에 2번 이상 → 후보)
     const suspects=findSuspects(recs);
@@ -243,24 +249,40 @@
     return [...susNG];
   }
 
-  function renderUnmatchedGate(items){
-    let h='<div class="gate"><h2>⚠ 미분류 수납항목 '+items.length+'종 — 교습과목을 입력해야 영수증이 생성됩니다</h2>'+
-      '<p class="muted">각 항목의 교습과목/세부반명(개설반에 표기)/정가를 입력하세요. (정가는 중복수강 할인 계산용, 없으면 0)</p>'+
-      '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반명</th><th>정가</th></tr></thead><tbody>';
-    items.forEach((it,i)=>{ h+='<tr><td>'+esc(it)+'</td>'+
-      '<td><input data-i="'+i+'" data-f="subject" value="" placeholder="예: 수학"></td>'+
-      '<td><input data-i="'+i+'" data-f="keyword" value="" placeholder="예: 쎈"></td>'+
-      '<td><input class="num" data-i="'+i+'" data-f="price" value="0"></td></tr>'; });
-    h+='</tbody></table></div><div class="bar"><button id="umok">이 매핑으로 진행</button>'+
+  function renderManualGate(stringItems, perRecs){
+    let h='<div class="gate"><h2>⚠ 영수증 생성 전 입력 필요</h2>';
+    if(stringItems.length){
+      h+='<p class="muted"><b>미분류 수납항목 '+stringItems.length+'종</b> — 교습과목/세부반명(개설반 표기)/정가</p>'+
+        '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반명</th><th>정가</th></tr></thead><tbody>';
+      stringItems.forEach((it,i)=>{ h+='<tr><td>'+esc(it)+'</td>'+
+        '<td><input data-t="str" data-i="'+i+'" data-f="subject" value=""></td>'+
+        '<td><input data-t="str" data-i="'+i+'" data-f="keyword" value=""></td>'+
+        '<td><input class="num" data-t="str" data-i="'+i+'" data-f="price" value="0"></td></tr>'; });
+      h+='</tbody></table></div>';
+    }
+    if(perRecs.length){
+      h+='<p class="muted"><b>기타수납 '+perRecs.length+'건</b> — 각 건을 실제 교습과목으로 입력하세요. (기타수납으로는 영수증이 나오지 않습니다)</p>'+
+        '<div class="wrap"><table><thead><tr><th>학생</th><th>수납월</th><th>납부액</th><th>납부일</th><th>교습과목</th><th>세부반명</th><th>정가</th></tr></thead><tbody>';
+      perRecs.forEach((r)=>{ h+='<tr><td>'+esc(r.name)+' <span class="muted">'+esc(r.grade)+'</span></td><td>'+esc(r.month)+'</td>'+
+        '<td style="text-align:right">'+won(r.amount)+'</td><td>'+esc(r.payDate||"-")+'</td>'+
+        '<td><input data-t="rec" data-id="'+r.id+'" data-f="subject" value=""></td>'+
+        '<td><input data-t="rec" data-id="'+r.id+'" data-f="keyword" value=""></td>'+
+        '<td><input class="num" data-t="rec" data-id="'+r.id+'" data-f="price" value="'+r.amount+'"></td></tr>'; });
+      h+='</tbody></table></div>';
+    }
+    h+='<div class="bar"><button id="mgok">이대로 진행</button>'+
       '<span class="muted">모든 교습과목을 채워야 진행됩니다.</span></div></div>';
     gateEl.innerHTML=h;
-    $("umok").addEventListener("click", ()=>{
-      const map={};
-      gateEl.querySelectorAll("input[data-i]").forEach((inp)=>{ const i=+inp.dataset.i;
-        (map[i]=map[i]||{item:items[i]})[inp.dataset.f]=inp.value.trim(); });
-      const vals=Object.values(map);
-      if(vals.some((v)=>!v.subject)){ alert("교습과목을 모두 입력해 주세요."); return; }
-      vals.forEach((v)=>{ overrides[v.item]={ subject:v.subject, keyword:v.keyword||v.item, price:toNumber(v.price) }; });
+    $("mgok").addEventListener("click", ()=>{
+      const strMap={}, recMap={};
+      gateEl.querySelectorAll('input[data-t="str"]').forEach((inp)=>{ const i=+inp.dataset.i;
+        (strMap[i]=strMap[i]||{item:stringItems[i]})[inp.dataset.f]=inp.value.trim(); });
+      gateEl.querySelectorAll('input[data-t="rec"]').forEach((inp)=>{ const id=+inp.dataset.id;
+        (recMap[id]=recMap[id]||{id:id})[inp.dataset.f]=inp.value.trim(); });
+      const strVals=Object.values(strMap), recVals=Object.values(recMap);
+      if(strVals.some((v)=>!v.subject) || recVals.some((v)=>!v.subject)){ alert("교습과목을 모두 입력해 주세요."); return; }
+      strVals.forEach((v)=>{ overrides[v.item]={ subject:v.subject, keyword:v.keyword||"", price:toNumber(v.price) }; });
+      recVals.forEach((v)=>{ overridesById[v.id]={ subject:v.subject, keyword:v.keyword||"", price:toNumber(v.price) }; });
       process();
     });
   }
