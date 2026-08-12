@@ -38,7 +38,20 @@
   .gate input { padding: 4px 7px; border: 1px solid #bbb; border-radius: 6px; font-size: .86rem; }
   .gate input.num { width: 70px; }
   .gate .grp { border-top: 2px solid #d1a600; margin-top: 10px; padding-top: 6px; }
+  .gate .warn { color: #b45309; font-weight: 600; }
+  .gate details.ctx { margin: 6px 0 12px; }
+  .gate details.ctx > summary { cursor: pointer; font-weight: 600; color: #92600a; }
+  .gate details.ctx .grp table { max-width: 100%; }
   .wrap { max-height: 380px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; }
+
+  /* 하단: 수납항목매핑 목록 (접기/펼치기) */
+  details.maplist { margin: 26px 0 40px; border: 1px solid #ddd; border-radius: 10px; padding: 10px 14px; }
+  details.maplist > summary { cursor: pointer; font-weight: 600; }
+  details.maplist .cnt { color: #888; font-weight: 400; font-size: .85rem; }
+  details.maplist table { border-collapse: collapse; width: 100%; font-size: .82rem; margin-top: 10px; }
+  details.maplist th, details.maplist td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  details.maplist th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
+  details.maplist .scroll { max-height: 460px; overflow: auto; border: 1px solid #eee; border-radius: 8px; }
 
   /* 영수증 (별지 제24호서식) */
   #receipts { margin-top: 12px; }
@@ -94,6 +107,13 @@
 
 <div id="receipts"></div>
 
+<div class="screen">
+  <details class="maplist">
+    <summary>📖 수납항목 → 교습과목·세부반 매핑 목록 <span id="mapcount" class="cnt"></span></summary>
+    <div id="maplistbody"><p class="muted">매핑을 불러오는 중…</p></div>
+  </details>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 (function () {
@@ -141,7 +161,20 @@
       MAPPING.push({ kw:s(r[ci.kw]), subject:s(r[ci.sub])||"기타", room:ci.room>=0?s(r[ci.room]):"" }); }
     MAPPING.sort((a,b)=> b.kw.length-a.kw.length); // 긴 키워드 우선
     mapStatusEl.textContent = "매핑 로드됨: "+MAPPING.length+"개 키워드 (수납항목매핑.csv)";
-  }).catch(()=>{ mapStatusEl.innerHTML = '<span class="err">수납항목매핑.csv 를 불러오지 못했습니다 — 저장소 루트에 두세요. (없으면 모두 미분류로 표시됩니다)</span>'; });
+    renderMapList();
+  }).catch(()=>{ mapStatusEl.innerHTML = '<span class="err">수납항목매핑.csv 를 불러오지 못했습니다 — 저장소 루트에 두세요. (없으면 모두 미분류로 표시됩니다)</span>';
+    const b=$("maplistbody"); if(b) b.innerHTML='<p class="err">수납항목매핑.csv 를 불러오지 못했습니다.</p>'; });
+
+  function renderMapList(){
+    const body=$("maplistbody"); if(!body) return;
+    const cnt=$("mapcount"); if(cnt) cnt.textContent="("+MAPPING.length+"개)";
+    const rows=[...MAPPING].sort((a,b)=>
+      a.subject.localeCompare(b.subject,"ko") || (a.room||"").localeCompare(b.room||"","ko") || a.kw.localeCompare(b.kw,"ko"));
+    let h='<div class="scroll"><table><thead><tr><th>교습과목</th><th>세부반</th><th>수납항목(키워드)</th></tr></thead><tbody>';
+    rows.forEach((m)=>{ h+='<tr><td>'+esc(m.subject)+'</td><td>'+esc(m.room||"")+'</td><td>'+esc(m.kw)+'</td></tr>'; });
+    h+='</tbody></table></div>';
+    body.innerHTML=h;
+  }
 
   // ── 도장: 저장소의 seal.png 사용 (없으면 (인) 텍스트) ──
   window.__sealErr = function(img){ img.replaceWith(document.createTextNode("(인)")); };
@@ -216,7 +249,7 @@
     // 1) 수기입력 게이트 — 미분류(항목명) + 기타수납(건별)
     const needStr=[...new Set(recs.filter((r)=>!r.matched && !r.perRecord).map((r)=>r.item))];
     const needRec=recs.filter((r)=>!r.matched && r.perRecord);
-    if(needStr.length || needRec.length){ renderManualGate(needStr, needRec); receipts.innerHTML=""; printbtn.disabled=true;
+    if(needStr.length || needRec.length){ renderManualGate(needStr, needRec, recs); receipts.innerHTML=""; printbtn.disabled=true;
       statusEl.textContent="입력 필요: 미분류 "+needStr.length+"종, 기타수납 "+needRec.length+"건"; return; }
 
     // 2) 동명이인 게이트 (같은 이름+학년에서 동일 수납항목이 그 달에 2번 이상 → 후보)
@@ -252,8 +285,27 @@
     return [...susNG];
   }
 
-  function renderManualGate(stringItems, perRecs){
+  function renderManualGate(stringItems, perRecs, recs){
     let h='<div class="gate"><h2>⚠ 영수증 생성 전 입력 필요</h2>';
+
+    // 참고 — 입력이 필요한 학생들이 실제로 듣는 반과 수납처리(매핑)된 항목
+    const affKeys=[...new Set((recs||[]).filter((r)=>!r.matched).map((r)=>r.name+"|"+r.grade))];
+    if(affKeys.length){
+      h+='<details class="ctx" open><summary>참고 — 해당 학생 '+affKeys.length+'명이 듣는 반 · 수납처리된 항목</summary>';
+      affKeys.sort((a,b)=>a.localeCompare(b,"ko")).forEach((key)=>{ const [nm,gr]=key.split("|");
+        const list=(recs||[]).filter((r)=>r.name===nm && r.grade===gr)
+          .sort((a,b)=>String(a.month).localeCompare(String(b.month))||dkey(a.payDate).localeCompare(dkey(b.payDate)));
+        const rooms=[...new Set(list.filter((r)=>r.matched).map((r)=>r.subject+(r.room?" "+r.room:"")))];
+        h+='<div class="grp"><b>'+esc(nm)+'</b> <span class="muted">('+esc(gr||"학년미상")+')</span>'+
+          '<div class="muted">듣는 반: '+(rooms.length?rooms.map(esc).join(" · "):"—")+'</div>'+
+          '<table><thead><tr><th>수납월</th><th>수납항목(원문)</th><th>납부액</th><th>매핑 결과</th></tr></thead><tbody>';
+        list.forEach((r)=>{ const res = r.matched ? esc(r.subject+(r.room?" / "+r.room:""))
+            : (r.perRecord ? '<span class="warn">기타수납 → 입력 필요</span>' : '<span class="warn">⚠ 미분류 → 입력 필요</span>');
+          h+='<tr><td>'+esc(r.month)+'</td><td>'+esc(r.item)+'</td><td style="text-align:right">'+won(r.amount)+'</td><td>'+res+'</td></tr>'; });
+        h+='</tbody></table></div>'; });
+      h+='</details>';
+    }
+
     if(stringItems.length){
       h+='<p class="muted"><b>미분류 수납항목 '+stringItems.length+'종</b> — 교습과목(예: 수학 중등 A / 과학 고등)과 세부반</p>'+
         '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
