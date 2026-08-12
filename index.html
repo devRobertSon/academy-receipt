@@ -333,12 +333,14 @@
         if(mathSum>0){
           const u=PRICE_TABLE["수학 "+band]||0;
           if(u>0){
+            const slots=band==="초등"?1:2;   // 수학 초등=A만, 중·고=A/B (C·D·E 없음, A/B 반복)
+            const AB=(i)=>String.fromCharCode(65+(i%slots));
             const k=Math.floor(mathSum/u), r=mathSum-k*u, n=k+(r>0?1:0);
-            for(let i=0;i<k;i++) out.push({ subject:"수학 "+band+" "+String.fromCharCode(65+i), room:"", amount:u, isEtc:false,
+            for(let i=0;i<k;i++) out.push({ subject:"수학 "+band+" "+AB(i), room:"", amount:u, isEtc:false,
               note:n>=2?"중복수강 할인 −50,000원":"" });
             if(r>0){ const notes=[]; if(n>=2) notes.push("중복수강 할인 −50,000원");
               notes.push("중복시간 할인 −"+won(u-r)+"원");
-              out.push({ subject:"수학 "+band+" "+String.fromCharCode(65+k), room:"", amount:r, isEtc:false, note:notes.join(" / ") }); }
+              out.push({ subject:"수학 "+band+" "+AB(k), room:"", amount:r, isEtc:false, note:notes.join(" / ") }); }
           } else {
             out.push({ subject:"수학", room:"", amount:mathSum, isEtc:false, note:"" }); // 학년미상
           }
