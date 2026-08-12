@@ -325,15 +325,18 @@
         Object.values(grp).forEach((g)=>{ if(g.length>=2) g.forEach((l,i)=>l._ab=" "+String.fromCharCode(65+i)); });
         others.forEach((l)=> out.push({ subject:l.fsub, room:(l.room||"")+(l._ab||""), amount:l.amount, isEtc:false, note:"" }));
 
-        // ② 수학: 항목별 (교습과목+세부반) 그룹 합산 → 정가 대비 중복수강/중복시간 할인
+        // ② 수학: (교습과목+세부반) 그룹. 합이 정가 이하면 한 줄로 합산(분할납),
+        //    정가 초과면 서로 다른 반이므로 항목별로 분리.
         const mgroups={};
         fin.filter((l)=>l.isMath).forEach((l)=>{ const room=l.room||"교과"; const key=l.fsub+"|"+room;
-          if(!mgroups[key]) mgroups[key]={ subject:l.fsub, room, amount:0 }; mgroups[key].amount+=l.amount; });
-        const mathLines=Object.values(mgroups); const nMath=mathLines.length;
-        mathLines.forEach((ml)=>{
-          const level=ml.subject.replace(/ [AB]$/,"");          // "수학 중등"
-          const price=PRICE_TABLE[level]||0;
-          const diff=price-ml.amount; const notes=[];
+          if(!mgroups[key]) mgroups[key]={ subject:l.fsub, room, amts:[] }; mgroups[key].amts.push(l.amount); });
+        const mathLines=[];
+        Object.values(mgroups).forEach((gg)=>{ const level=gg.subject.replace(/ [AB]$/,"");
+          const price=PRICE_TABLE[level]||0; const sum=gg.amts.reduce((a,b)=>a+b,0);
+          if(gg.amts.length===1 || sum<=price) mathLines.push({ subject:gg.subject, room:gg.room, amount:sum, price });
+          else gg.amts.forEach((a)=> mathLines.push({ subject:gg.subject, room:gg.room, amount:a, price })); });
+        const nMath=mathLines.length;
+        mathLines.forEach((ml)=>{ const diff=ml.price-ml.amount; const notes=[];
           if(nMath>=2 && diff>0){ const jung=Math.min(50000,diff); notes.push("중복수강 할인 −"+won(jung)+"원");
             const sigan=diff-jung; if(sigan>0) notes.push("중복시간 할인 −"+won(sigan)+"원"); }
           out.push({ subject:ml.subject, room:ml.room, amount:ml.amount, isEtc:false, note:notes.join(" / ") });
