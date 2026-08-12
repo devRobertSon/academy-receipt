@@ -27,8 +27,6 @@
   .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
   .muted { color: #888; font-size: .85rem; }
   .err { color: #b91c1c; white-space: pre-wrap; }
-  .sealctl { font-size: .85rem; color: #555; }
-  #sealprev { height: 32px; vertical-align: middle; border: 1px solid #ddd; border-radius: 4px; }
 
   /* 게이트(미분류 / 동명이인 확인) */
   .gate { border: 1px solid rgba(234,179,8,.6); background: rgba(234,179,8,.10);
@@ -74,26 +72,20 @@
 
 <div class="screen">
 <h1>교습비등 영수증 생성</h1>
-<p class="sub">수납현황 <code>.xls / .xlsx</code>를 <b>여러 개 한 번에</b> 올리면, 실제 수강한
+<p class="sub">수납현황 <code>.xls / .xlsx / .csv</code>를 <b>여러 개 한 번에</b> 올리면, 실제 수강한
 <b>수납항목</b>을 <code>수납항목매핑.csv</code>로 교습과목에 매핑해 <b>별지 제24호서식</b> 영수증을 만듭니다.
 학생은 <b>이름+학년</b>으로 구분하고, 영수증은 <b>영수일 오래된 순</b>으로 정렬됩니다.</p>
 
 <div id="drop">
-  📥 수납현황 엑셀 파일들을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
+  📥 수납현황 엑셀/CSV 파일들을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
   <span class="muted">여러 달·여러 파일을 한 번에 올릴 수 있습니다. 파일은 브라우저 안에서만 처리됩니다.</span>
 </div>
-<input id="files" type="file" accept=".xls,.xlsx" multiple hidden />
+<input id="files" type="file" accept=".xls,.xlsx,.csv" multiple hidden />
 
 <label class="opt"><input id="excludeRefund" type="checkbox" checked /> 환불(상태='환불') 제외</label>
 
 <div class="bar">
   <button id="printbtn" disabled>🖨 인쇄 / PDF 저장</button>
-  <span class="sealctl">도장(인):
-    <input id="sealfile" type="file" accept="image/*" hidden />
-    <button id="sealbtn" class="sm" type="button">이미지 선택</button>
-  </span>
-  <img id="sealprev" alt="" style="display:none" />
-  <button id="sealclear" class="sm" type="button" style="display:none">지우기</button>
 </div>
 <div id="status" class="muted"></div>
 <div id="mapstatus" class="muted"></div>
@@ -114,7 +106,6 @@
   const drop = $("drop"), filesInput = $("files"), receipts = $("receipts");
   const printbtn = $("printbtn"), statusEl = $("status"), mapStatusEl = $("mapstatus"), gateEl = $("gate");
   const excludeRefund = $("excludeRefund");
-  const sealfile = $("sealfile"), sealbtn = $("sealbtn"), sealprev = $("sealprev"), sealclear = $("sealclear");
 
   const s = (v) => (v == null ? "" : String(v).trim());
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
@@ -152,16 +143,8 @@
     mapStatusEl.textContent = "매핑 로드됨: "+MAPPING.length+"개 키워드 (수납항목매핑.csv)";
   }).catch(()=>{ mapStatusEl.innerHTML = '<span class="err">수납항목매핑.csv 를 불러오지 못했습니다 — 저장소 루트에 두세요. (없으면 모두 미분류로 표시됩니다)</span>'; });
 
-  // ── 도장 ──
+  // ── 도장: 저장소의 seal.png 사용 (없으면 (인) 텍스트) ──
   window.__sealErr = function(img){ img.replaceWith(document.createTextNode("(인)")); };
-  let sealUrl=""; try{ sealUrl=localStorage.getItem("sealDataUrl")||""; }catch(e){}
-  function refreshSealUI(){ if(sealUrl){ sealprev.src=sealUrl; sealprev.style.display=""; sealclear.style.display=""; sealbtn.textContent="이미지 변경"; }
-    else { sealprev.style.display="none"; sealclear.style.display="none"; sealbtn.textContent="이미지 선택"; } }
-  refreshSealUI();
-  sealbtn.addEventListener("click", ()=>sealfile.click());
-  sealfile.addEventListener("change", ()=>{ const f=sealfile.files[0]; if(!f)return; const rd=new FileReader();
-    rd.onload=()=>{ sealUrl=rd.result; try{localStorage.setItem("sealDataUrl",sealUrl);}catch(e){} refreshSealUI(); process(); }; rd.readAsDataURL(f); });
-  sealclear.addEventListener("click", ()=>{ sealUrl=""; try{localStorage.removeItem("sealDataUrl");}catch(e){} sealfile.value=""; refreshSealUI(); process(); });
   printbtn.addEventListener("click", ()=>window.print());
 
   // ── 업로드 ──
@@ -179,26 +162,33 @@
   let splitMap={};     // 동명이인 분리: recordId -> personNo (>=1)
   let splitConfirmed=false;
 
+  // 엑셀은 SheetJS로, CSV는 직접 파싱해 동일한 "행렬(rows)"로 만든다.
+  function readRows(f){
+    if(/\.csv$/i.test(f.name)) return f.text().then((t)=> parseCSV(t));
+    return f.arrayBuffer().then((buf)=>{
+      const wb=XLSX.read(buf,{type:"array"}); // cellDates 미사용(타임존 안전)
+      return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
+    });
+  }
+  function extractRows(rows){
+    let hi=-1, idx={};
+    for(let i=0;i<Math.min(rows.length,10);i++){ const r=rows[i].map((c)=>String(c).trim());
+      if(r.includes("NO")&&r.includes("이름")&&r.includes("납부액")){ hi=i; for(const k in HEADERS) idx[k]=r.indexOf(HEADERS[k]); break; } }
+    if(hi<0) return;
+    const data=rows.slice(hi+1);
+    for(let i=0;i<data.length;i++){ if(s(data[i][idx.no])==="")continue;
+      ALL.push({ month: idx.month>=0?monthKey(data[i][idx.month]):"월미상",
+        name:s(data[i][idx.name]), grade:s(data[i][idx.grade]),
+        item:s(data[i][idx.item]), amount:toNumber(data[i][idx.amount]),
+        status:s(data[i][idx.status]), payDate: idx.payDate>=0?fmtDate(data[i][idx.payDate]):"" }); }
+  }
   function handleFiles(fileList){
-    const files=[...fileList].filter((f)=>/\.(xlsx|xls)$/i.test(f.name));
-    if(!files.length){ statusEl.textContent="엑셀 파일이 없습니다."; return; }
+    const files=[...fileList].filter((f)=>/\.(xlsx|xls|csv)$/i.test(f.name));
+    if(!files.length){ statusEl.textContent="엑셀/CSV 파일이 없습니다."; return; }
     statusEl.textContent="읽는 중…";
-    Promise.all(files.map((f)=> f.arrayBuffer().then((buf)=>({name:f.name, buf})))).then((arr)=>{
+    Promise.all(files.map(readRows)).then((rowsList)=>{
       ALL=[]; overrides={}; overridesById={}; splitMap={}; splitConfirmed=false;
-      arr.forEach(({buf})=>{
-        const wb=XLSX.read(buf,{type:"array"}); // cellDates 미사용(타임존 안전)
-        const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
-        let hi=-1, idx={};
-        for(let i=0;i<Math.min(rows.length,10);i++){ const r=rows[i].map((c)=>String(c).trim());
-          if(r.includes("NO")&&r.includes("이름")&&r.includes("납부액")){ hi=i; for(const k in HEADERS) idx[k]=r.indexOf(HEADERS[k]); break; } }
-        if(hi<0) return;
-        const data=rows.slice(hi+1);
-        for(let i=0;i<data.length;i++){ if(s(data[i][idx.no])==="")continue;
-          ALL.push({ month: idx.month>=0?monthKey(data[i][idx.month]):"월미상",
-            name:s(data[i][idx.name]), grade:s(data[i][idx.grade]),
-            item:s(data[i][idx.item]), amount:toNumber(data[i][idx.amount]),
-            status:s(data[i][idx.status]), payDate: idx.payDate>=0?fmtDate(data[i][idx.payDate]):"" }); }
-      });
+      rowsList.forEach((rows)=>{ if(rows) extractRows(rows); });
       rebuildRecords();
     }).catch((err)=>{ statusEl.innerHTML='<span class="err">읽기 오류: '+esc(err.message)+'</span>'; });
   }
@@ -367,7 +357,7 @@
       '<div class="rc-note">※ 기타경비 없음. 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다.</div>'+
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br /><span style="letter-spacing:.1em">영수일자 : '+rdateLabel+'</span></div>'+
       '<div class="rc-sign">'+esc(ACADEMY.name)+" · "+esc(ACADEMY.owner)+
-        ' <img class="rc-seal" src="'+(sealUrl||REPO_SEAL)+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
+        ' <img class="rc-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
       "</div>";
   }
 })();
