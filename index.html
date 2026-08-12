@@ -11,12 +11,19 @@
   }
   h1 { font-size: 1.35rem; margin-bottom: 4px; }
   .sub { color: #666; margin-top: 0; font-size: .9rem; }
-  #drop {
+  .drop {
     border: 2px dashed #999; border-radius: 12px; padding: 40px 20px;
     text-align: center; cursor: pointer; transition: .15s; margin: 18px 0;
   }
-  #drop.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
-  #drop b { color: #2563eb; }
+  .drop.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
+  .drop b { color: #2563eb; }
+
+  /* 탭 */
+  .tabs { display: flex; gap: 6px; border-bottom: 2px solid #ddd; margin: 12px 0 4px; }
+  .tab { background: transparent; color: #555; border: 0; border-bottom: 3px solid transparent;
+    border-radius: 8px 8px 0 0; padding: 9px 16px; font-size: .98rem; cursor: pointer; }
+  .tab.on { color: #2563eb; border-bottom-color: #2563eb; font-weight: 700; }
+  .panel[hidden] { display: none; }
   .opt { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
   button {
     font-size: 1rem; padding: 10px 18px; border: 0; border-radius: 8px;
@@ -75,21 +82,48 @@
   .rc-sign { margin-top: 6px; text-align: right; font-size: .9rem; }
   .rc-seal { height: 48px; width: auto; vertical-align: middle; margin-left: 8px; }
 
+  /* 현금출납부 */
+  .cbsheet { border: 1.5px solid #222; padding: 16px 20px; margin: 0 auto 22px; max-width: 820px; background: #fff; }
+  .cbsheet, .cbsheet * { color: #111 !important; }
+  .cb-title { text-align: center; font-size: 1.3rem; font-weight: 700; letter-spacing: .3em; margin: 2px 0; }
+  .cb-sub { text-align: center; font-size: .9rem; padding-bottom: 8px; border-bottom: 2px solid #222; margin-bottom: 8px; }
+  .cb-recon { font-size: .78rem; color: #555 !important; margin: 4px 0 8px; }
+  table.cb { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  table.cb th, table.cb td { border: 1px solid #555; padding: 4px 8px; white-space: nowrap; }
+  table.cb th { background: #f1f1f1; text-align: center; }
+  table.cb td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  table.cb td.desc { white-space: normal; }
+  table.cb tr.carry td, table.cb tr.sum td { font-weight: 700; background: #fafafa; }
+  table.cb tr.out td.desc { color: #7a2e2e !important; }
+  .cb-foot { margin-top: 14px; text-align: right; font-size: .9rem; }
+  .cb-seal { height: 44px; width: auto; vertical-align: middle; margin-left: 8px; }
+
   @media print {
     .screen { display: none !important; }
     body { margin: 0; max-width: none; padding: 0; }
-    #receipts { margin: 0; }
+    #receipts, #cashbook { margin: 0; }
     .receipt { border: 1px solid #000; max-width: none; margin: 0; page-break-after: always; }
+    .cbsheet { border: 1px solid #000; max-width: none; margin: 0; page-break-after: always; }
+    body[data-tab="receipt"] #cashbook { display: none !important; }
+    body[data-tab="cashbook"] #receipts { display: none !important; }
   }
 </style>
 
 <div class="screen">
-<h1>교습비등 영수증 생성</h1>
+<h1>열매맺는나무알파학원 회계 도구</h1>
+
+<div class="tabs">
+  <button class="tab on" data-tab="receipt">교습비 영수증</button>
+  <button class="tab" data-tab="cashbook">현금출납부</button>
+</div>
+
+<!-- ── 탭1: 교습비 영수증 ── -->
+<section class="panel" data-panel="receipt">
 <p class="sub">수납현황 <code>.xls / .xlsx / .csv</code>를 <b>여러 개 한 번에</b> 올리면, 실제 수강한
 <b>수납항목</b>을 <code>수납항목매핑.csv</code>로 교습과목에 매핑해 <b>별지 제24호서식</b> 영수증을 만듭니다.
 학생은 <b>이름+학년</b>으로 구분하고, 영수증은 <b>영수일 오래된 순</b>으로 정렬됩니다.</p>
 
-<div id="drop">
+<div id="drop" class="drop">
   📥 수납현황 엑셀/CSV 파일들을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
   <span class="muted">여러 달·여러 파일을 한 번에 올릴 수 있습니다. 파일은 브라우저 안에서만 처리됩니다.</span>
 </div>
@@ -103,9 +137,28 @@
 <div id="status" class="muted"></div>
 <div id="mapstatus" class="muted"></div>
 <div id="gate"></div>
+</section>
+
+<!-- ── 탭2: 현금출납부 ── -->
+<section class="panel" data-panel="cashbook" hidden>
+<p class="sub"><b>수입</b>은 영수증 탭에 올린 <b>수납현황(현금결제 제외)</b>에서 만들어 <b>월별 영수증 수입과 일치</b>하며,
+각 학생의 <b>납부일(결제시점)</b>이 표시됩니다. <b>지출</b>은 아래에 <b>통장 입출금내역서</b>를 올리면 통장 출금에서 채워집니다.</p>
+
+<div id="cbdrop" class="drop">
+  📥 통장 입출금내역서 <code>.xls / .xlsx / .csv</code>를 끌어다 놓거나 <b>클릭해서 선택</b> (지출용, 선택)<br />
+  <span class="muted">여러 달이 한 파일에 있어도 월별로 나눠 만듭니다. 올리지 않으면 수입(영수증)만 표시됩니다.</span>
+</div>
+<input id="cbfiles" type="file" accept=".xls,.xlsx,.csv" multiple hidden />
+
+<div class="bar">
+  <button id="cbprint" disabled>🖨 인쇄 / PDF 저장</button>
+</div>
+<div id="cbstatus" class="muted"></div>
+</section>
 </div><!-- /.screen -->
 
 <div id="receipts"></div>
+<div id="cashbook"></div>
 
 <div class="screen">
   <details class="maplist">
@@ -180,6 +233,132 @@
   window.__sealErr = function(img){ img.replaceWith(document.createTextNode("(인)")); };
   printbtn.addEventListener("click", ()=>window.print());
 
+  // ══════════ 탭 전환 ══════════
+  document.querySelectorAll(".tab").forEach((t)=>t.addEventListener("click", ()=>{
+    const name=t.dataset.tab;
+    document.querySelectorAll(".tab").forEach((x)=>x.classList.toggle("on", x===t));
+    document.querySelectorAll(".panel").forEach((p)=>{ p.hidden = p.dataset.panel!==name; });
+    document.body.dataset.tab=name;
+  }));
+  document.body.dataset.tab="receipt";
+
+  // ══════════ 현금출납부 ══════════
+  // 수입 = 수납현황(영수증, 현금결제 제외) — 학생별·납부일. 지출 = 통장 출금(선택).
+  const cbdrop=$("cbdrop"), cbfiles=$("cbfiles"), cbstatus=$("cbstatus"),
+    cbprint=$("cbprint"), cashbookEl=$("cashbook");
+  let CBTX=[]; // 통장 출금(지출): {date, month, amount, desc}
+  cbprint.addEventListener("click", ()=>window.print());
+  cbdrop.addEventListener("click", ()=>cbfiles.click());
+  ["dragover","dragenter"].forEach((e)=>cbdrop.addEventListener(e,(ev)=>{ ev.preventDefault(); cbdrop.classList.add("hover"); }));
+  ["dragleave","drop"].forEach((e)=>cbdrop.addEventListener(e,()=>cbdrop.classList.remove("hover")));
+  cbdrop.addEventListener("drop",(ev)=>{ ev.preventDefault(); if(ev.dataTransfer.files.length) cbHandle(ev.dataTransfer.files); });
+  cbfiles.addEventListener("change", ()=>{ if(cbfiles.files.length) cbHandle(cbfiles.files); });
+
+  function cbHandle(fileList){
+    const files=[...fileList].filter((f)=>/\.(xlsx|xls|csv)$/i.test(f.name));
+    if(!files.length){ cbstatus.textContent="엑셀/CSV 파일이 없습니다."; return; }
+    cbstatus.textContent="통장 내역 읽는 중…";
+    Promise.all(files.map(readRows)).then((rowsList)=>{
+      CBTX=[]; rowsList.forEach((rows)=>{ if(rows) cbExtractBank(rows); });
+      buildCashbook();
+    }).catch((err)=>{ cbstatus.innerHTML='<span class="err">읽기 오류: '+esc(err.message)+'</span>'; });
+  }
+
+  // 통장 입출금내역서에서 '출금(지출)'만 추출
+  function cbExtractBank(rows){
+    let hi=-1, H={};
+    for(let i=0;i<rows.length;i++){ const r=(rows[i]||[]).map((c)=>String(c).replace(/\s/g,""));
+      if(r.some((c)=>c.indexOf("거래일자")>=0)){ hi=i;
+        const find=(...ks)=>{ for(const k of ks){ const j=r.findIndex((c)=>c.indexOf(k)>=0); if(j>=0) return j; } return -1; };
+        H.date=find("거래일자"); H.out=find("출금"); H.in=find("입금");
+        H.desc1=find("거래기록사항"); H.desc2=find("거래내용"); break; } }
+    if(hi<0) return;
+    for(let i=hi+1;i<rows.length;i++){ const r=rows[i]; if(!r) continue;
+      const date=fmtDate(r[H.date]); if(!date) continue;
+      const outAmt=toNumber(r[H.out]); if(!outAmt) continue;         // 지출(출금)만
+      const a=s(r[H.desc2]), b=s(r[H.desc1]);
+      const desc=(b&&a&&b!==a)? a+" · "+b : (b||a);
+      CBTX.push({ date, month:date.slice(0,7), amount:outAmt, desc }); }
+  }
+
+  function classifyMethod(m){ const t=String(m).replace(/\s/g,"");
+    if(/현금/.test(t)) return "현금";
+    if(/카드/.test(t)) return "카드";
+    if(/(무통장|계좌|이체|온라인|가상|입금|폰뱅|이니시스|간편)/.test(t)) return "무통장";
+    return t? "기타" : ""; }
+
+  function buildCashbook(){
+    const dropRefund=excludeRefund.checked;
+    // 수입: 수납현황(현금·환불 제외) → 학생별·납부일·수납월
+    const income=[]; const cashByMonth={}; const recByMonth={};
+    ALL.forEach((r)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
+      const amt=r.amount||0; if(!amt) return; const m=r.month;
+      recByMonth[m]=(recByMonth[m]||0)+amt;                          // 영수증 수입(현금 포함)
+      const cls=classifyMethod(r.method);
+      if(cls==="현금"){ cashByMonth[m]=(cashByMonth[m]||0)+amt; return; } // 현금 제외
+      income.push({ month:m, name:r.name, payDate:r.payDate, amount:amt,
+        method: (cls==="카드"||cls==="무통장")? cls : (cls||"") }); });
+
+    const months=[...new Set(income.map((r)=>r.month).concat(CBTX.map((t)=>t.month)))]
+      .filter((m)=>m && m!=="월미상").sort();
+    if(!months.length){ cashbookEl.innerHTML=""; cbprint.disabled=true;
+      cbstatus.textContent = ALL.length? "" : "먼저 [교습비 영수증] 탭에서 수납현황을 올려주세요."; return; }
+
+    let carry=0; const pages=[];
+    months.forEach((m)=>{
+      const inMap={};
+      income.filter((r)=>r.month===m).forEach((r)=>{ const k=r.payDate+"|"+r.name+"|"+r.method;
+        (inMap[k]=inMap[k]||{ date:r.payDate, name:r.name, method:r.method, amount:0 }).amount+=r.amount; });
+      const inLines=Object.values(inMap).map((v)=>({ kind:"in", date:v.date, amount:v.amount,
+        desc:v.name+(v.method?" ("+v.method+")":"") }));
+      const outLines=CBTX.filter((t)=>t.month===m).map((t)=>({ kind:"out", date:t.date, amount:t.amount, desc:t.desc }));
+      const lines=inLines.concat(outLines).sort((a,b)=>dkey(a.date).localeCompare(dkey(b.date))
+        || (a.kind===b.kind?0:(a.kind==="in"?-1:1)));
+      const sumIn=inLines.reduce((x,l)=>x+l.amount,0), sumOut=outLines.reduce((x,l)=>x+l.amount,0);
+      const opening=carry; let bal=carry;
+      lines.forEach((l)=>{ bal += (l.kind==="in"? l.amount : -l.amount); l.bal=bal; });
+      carry=bal;
+      pages.push({ month:m, opening, closing:bal, sumIn, sumOut, lines,
+        cashM: cashByMonth[m]||0, recTotal: recByMonth[m]||sumIn });
+    });
+
+    cashbookEl.innerHTML = pages.map(cbPageHTML).join("");
+    cbprint.disabled = pages.length===0;
+    let st = pages.length+"개월 · 현금출납부 "+pages.length+"장";
+    if(METHOD_COL){ const totCash=Object.values(cashByMonth).reduce((a,b)=>a+b,0);
+      st += " · 결제수단 컬럼 '"+METHOD_COL+"' 감지(현금 "+won(totCash)+"원 제외)"; }
+    else st += " · ⚠ 수납현황에 결제수단 컬럼이 없어 현금을 구분하지 못했습니다(전액 포함)";
+    st += CBTX.length? " · 지출 "+CBTX.length+"건 반영" : " · 지출 없음(통장 미첨부)";
+    cbstatus.innerHTML = METHOD_COL? esc(st) : '<span class="err">'+esc(st)+'</span>';
+    if(document.body.dataset.tab==="cashbook") cashbookEl.scrollIntoView({behavior:"smooth", block:"start"});
+  }
+
+  function cbPageHTML(p){
+    const ym=String(p.month).match(/^(\d{4})-(\d{2})$/);
+    const label=ym? ym[1]+"년 "+parseInt(ym[2],10)+"월" : p.month;
+    const mmdd=(d)=>{ const m=String(d).match(/^\d{4}-(\d{2})-(\d{2})$/); return m? m[1]+"/"+m[2] : ""; };
+    let rows='<tr class="carry"><td></td><td class="desc">전월이월</td><td class="n"></td><td class="n"></td><td class="n">'+won(p.opening)+'</td></tr>';
+    p.lines.forEach((l)=>{ rows+='<tr class="'+(l.kind==="out"?"out":"")+'">'+
+      '<td>'+esc(mmdd(l.date))+'</td><td class="desc">'+esc(l.desc)+'</td>'+
+      '<td class="n">'+(l.kind==="in"?won(l.amount):"")+'</td>'+
+      '<td class="n">'+(l.kind==="out"?won(l.amount):"")+'</td>'+
+      '<td class="n">'+won(l.bal)+'</td></tr>'; });
+    rows+='<tr class="sum"><td></td><td class="desc">월계</td><td class="n">'+won(p.sumIn)+'</td><td class="n">'+won(p.sumOut)+'</td><td class="n">'+won(p.closing)+'</td></tr>';
+    rows+='<tr class="sum"><td></td><td class="desc">차월이월</td><td class="n"></td><td class="n"></td><td class="n">'+won(p.closing)+'</td></tr>';
+    const recon = p.cashM>0
+      ? "영수증 수입(현금 포함) "+won(p.recTotal)+"원 − 현금 "+won(p.cashM)+"원 = 본 출납부 수입 "+won(p.sumIn)+"원"
+      : "영수증 수입과 일치 — 수입 합계 "+won(p.sumIn)+"원";
+    return '<div class="cbsheet"><div class="cb-title">현 금 출 납 부</div>'+
+      '<div class="cb-sub">'+esc(ACADEMY.name)+' ('+esc(ACADEMY.owner)+') · '+esc(label)+'</div>'+
+      '<div class="cb-recon">※ '+esc(recon)+(CBTX.length?'':' · 지출은 통장 입출금내역서를 올리면 채워집니다.')+
+        ' · 잔액은 장부상(수입−지출) 누계입니다.</div>'+
+      '<table class="cb"><thead><tr><th style="width:60px">일자</th><th>적요</th>'+
+      '<th style="width:110px">수입</th><th style="width:110px">지출</th><th style="width:120px">잔액</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody></table>'+
+      '<div class="cb-foot">'+esc(ACADEMY.owner)+' <img class="cb-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)"></div>'+
+      '</div>';
+  }
+
   // ── 업로드 ──
   drop.addEventListener("click", ()=>filesInput.click());
   ["dragover","dragenter"].forEach((e)=>drop.addEventListener(e,(ev)=>{ ev.preventDefault(); drop.classList.add("hover"); }));
@@ -194,6 +373,7 @@
   let overridesById={};// 기타수납 등 건별 수기입력: recordId -> {subject, keyword, price}
   let splitMap={};     // 동명이인 분리: recordId -> personNo (>=1)
   let splitConfirmed=false;
+  let METHOD_COL="";   // 수납현황에서 감지된 결제수단 컬럼명("" = 미발견)
 
   // 엑셀은 SheetJS로, CSV는 직접 파싱해 동일한 "행렬(rows)"로 만든다.
   function readRows(f){
@@ -203,30 +383,34 @@
       return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
     });
   }
+  // 결제수단(현금/카드/무통장) 컬럼 후보 — 현금출납부에서 현금 제외에 사용
+  const METHOD_HEADERS=["결제방법","수납방법","결제수단","수납수단","납부방법","결제구분","수납구분","결제유형","수납유형","결제방식","수납방식","수납형태"];
   function extractRows(rows){
-    let hi=-1, idx={};
+    let hi=-1, idx={}, mi=-1;
     for(let i=0;i<Math.min(rows.length,10);i++){ const r=rows[i].map((c)=>String(c).trim());
-      if(r.includes("NO")&&r.includes("이름")&&r.includes("납부액")){ hi=i; for(const k in HEADERS) idx[k]=r.indexOf(HEADERS[k]); break; } }
+      if(r.includes("NO")&&r.includes("이름")&&r.includes("납부액")){ hi=i; for(const k in HEADERS) idx[k]=r.indexOf(HEADERS[k]);
+        for(const c of METHOD_HEADERS){ const j=r.indexOf(c); if(j>=0){ mi=j; METHOD_COL=c; break; } } break; } }
     if(hi<0) return;
     const data=rows.slice(hi+1);
     for(let i=0;i<data.length;i++){ if(s(data[i][idx.no])==="")continue;
       ALL.push({ month: idx.month>=0?monthKey(data[i][idx.month]):"월미상",
         name:s(data[i][idx.name]), grade:s(data[i][idx.grade]),
         item:s(data[i][idx.item]), amount:toNumber(data[i][idx.amount]),
-        status:s(data[i][idx.status]), payDate: idx.payDate>=0?fmtDate(data[i][idx.payDate]):"" }); }
+        status:s(data[i][idx.status]), payDate: idx.payDate>=0?fmtDate(data[i][idx.payDate]):"",
+        method: mi>=0?s(data[i][mi]):"" }); }
   }
   function handleFiles(fileList){
     const files=[...fileList].filter((f)=>/\.(xlsx|xls|csv)$/i.test(f.name));
     if(!files.length){ statusEl.textContent="엑셀/CSV 파일이 없습니다."; return; }
     statusEl.textContent="읽는 중…";
     Promise.all(files.map(readRows)).then((rowsList)=>{
-      ALL=[]; overrides={}; overridesById={}; splitMap={}; splitConfirmed=false;
+      ALL=[]; overrides={}; overridesById={}; splitMap={}; splitConfirmed=false; METHOD_COL="";
       rowsList.forEach((rows)=>{ if(rows) extractRows(rows); });
       rebuildRecords();
     }).catch((err)=>{ statusEl.innerHTML='<span class="err">읽기 오류: '+esc(err.message)+'</span>'; });
   }
 
-  function rebuildRecords(){ splitMap={}; splitConfirmed=false; process(); }
+  function rebuildRecords(){ splitMap={}; splitConfirmed=false; process(); buildCashbook(); }
 
   // 기타수납은 자동 매핑하지 않고 항상 건별 수기입력(perRecord) 대상으로 둔다.
   const isEtc = (item) => item.replace(/\s/g,"") === "기타수납";
