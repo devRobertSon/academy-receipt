@@ -315,18 +315,39 @@
     const byMonth={}; const items=[];
     Object.keys(map).forEach((sk)=>{ const name=sk.split("|")[0];
       Object.keys(map[sk]).forEach((month)=>{ const raw=map[sk][month];
-        // 레벨 확정(학년 기준) + 정가/기타경비 확정
-        const lines=raw.map((l)=>{ const fsub=finalizeSubject(l.subject,l.grade);
-          const price=PRICE_TABLE[fsub]!=null?PRICE_TABLE[fsub]:(l.price||0);
-          return { subject:fsub, keyword:l.keyword||"", amount:l.amount, payDate:l.payDate, price, isEtc:fsub==="기타경비" }; });
-        // 개설반 A/B: 같은 교습과목+키워드가 2개 이상이면 A,B… (기타경비 제외)
-        const grp={}; lines.forEach((l)=>{ if(l.isEtc) return; const g=l.subject+"|"+l.keyword; (grp[g]=grp[g]||[]).push(l); });
+        const band=bandFromGrade((raw[0]||{}).grade);
+        const fin=raw.map((l)=>{ const fsub=finalizeSubject(l.subject,l.grade);
+          return { fsub, keyword:l.keyword||"", amount:l.amount, payDate:l.payDate,
+            isEtc:fsub==="기타경비", isMath:/^수학/.test(fsub) }; });
+        const rdate=fin.reduce((mx,l)=>(dkey(l.payDate)>dkey(mx)?l.payDate:mx), "");
+        const out=[];
+
+        // ① 과학·진학지도 등(수학·기타경비 제외): 실제 라인, 개설반 A/B
+        const others=fin.filter((l)=>!l.isMath && !l.isEtc);
+        const grp={}; others.forEach((l)=>{ const g=l.fsub+"|"+l.keyword; (grp[g]=grp[g]||[]).push(l); });
         Object.values(grp).forEach((g)=>{ if(g.length>=2) g.forEach((l,i)=>l._ab=" "+String.fromCharCode(65+i)); });
-        const subjects=new Set(lines.filter((l)=>!l.isEtc).map((l)=>l.subject)); const multi=subjects.size>=2;
-        const rdate=lines.reduce((mx,l)=>(dkey(l.payDate)>dkey(mx)?l.payDate:mx), "");
-        const it={ name, month, rdate, lines: lines.map((l)=>({
-          subject:l.subject, room:(l.keyword||"")+(l._ab||""), amount:l.amount, isEtc:l.isEtc,
-          note:(!l.isEtc && multi && l.price>0 && l.amount<l.price) ? ("중복수강 할인 −"+won(l.price-l.amount)+"원") : "" })) };
+        others.forEach((l)=> out.push({ subject:l.fsub, room:(l.keyword||"")+(l._ab||""), amount:l.amount, isEtc:false, note:"" }));
+
+        // ② 수학: 학생 수학 납부액 합산 → 학년 밴드 정가로 분배
+        const mathSum=fin.filter((l)=>l.isMath).reduce((a,l)=>a+l.amount,0);
+        if(mathSum>0){
+          const u=PRICE_TABLE["수학 "+band]||0;
+          if(u>0){
+            const k=Math.floor(mathSum/u), r=mathSum-k*u, n=k+(r>0?1:0);
+            for(let i=0;i<k;i++) out.push({ subject:"수학 "+band+" "+String.fromCharCode(65+i), room:"", amount:u, isEtc:false,
+              note:n>=2?"중복수강 할인 −50,000원":"" });
+            if(r>0){ const notes=[]; if(n>=2) notes.push("중복수강 할인 −50,000원");
+              notes.push("중복시간 할인 −"+won(u-r)+"원");
+              out.push({ subject:"수학 "+band+" "+String.fromCharCode(65+k), room:"", amount:r, isEtc:false, note:notes.join(" / ") }); }
+          } else {
+            out.push({ subject:"수학", room:"", amount:mathSum, isEtc:false, note:"" }); // 학년미상
+          }
+        }
+
+        // ③ 기타경비(식사비 등)
+        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.keyword||"식사비", amount:l.amount, isEtc:true, note:"" }));
+
+        const it={ name, month, rdate, lines: out };
         items.push(it); (byMonth[month]=byMonth[month]||[]).push(it);
       }); });
 
