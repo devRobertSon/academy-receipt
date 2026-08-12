@@ -235,11 +235,12 @@
     "수학 초등":200000,"수학 중등":250000,"수학 고등":300000,"진학지도":300000};
   function bandFromGrade(g){ const c=String(g).charAt(0); return c==="초"?"초등":c==="중"?"중등":c==="고"?"고등":""; }
   function finalizeSubject(subject,grade){
-    // 레벨이 필요한 순수 "수학"/"과학"에만 학생 학년으로 레벨을 붙인다.
+    // 레벨이 없는 "수학"/"과학"(방학특강 "수학 A" 등)에 학생 학년으로 레벨을 붙인다.
     // (진학지도·기타경비·이미 레벨 있는 값은 그대로)
-    if(subject!=="수학" && subject!=="과학") return subject;
-    const b=bandFromGrade(grade);
-    return b ? subject+" "+b : subject;                     // 예: 방학특강 "수학" → "수학 중등"
+    if(!/^(수학|과학)/.test(subject)) return subject;
+    if(/(초등|중등|고등)/.test(subject)) return subject;   // 이미 레벨 있음
+    const b=bandFromGrade(grade); if(!b) return subject;
+    return subject.replace(/^(수학|과학)/, "$1 "+b);        // "수학 A" → "수학 중등 A"
   }
 
   function findSuspects(recs){
@@ -327,17 +328,25 @@
 
         // ② 수학: (교습과목+세부반) 그룹. 합이 정가 이하면 한 줄로 합산(분할납),
         //    정가 초과면 서로 다른 반이므로 항목별로 분리.
+        //    그리고 한 줄이라도 교습과목 정가를 넘으면 정가 이하로 쪼갠다(A/B/C…).
         const mgroups={};
         fin.filter((l)=>l.isMath).forEach((l)=>{ const room=l.room||"교과"; const key=l.fsub+"|"+room;
           if(!mgroups[key]) mgroups[key]={ subject:l.fsub, room, amts:[] }; mgroups[key].amts.push(l.amount); });
+        const nMath=Object.keys(mgroups).length; // 수학 과목(그룹) 수
         const mathLines=[];
         Object.values(mgroups).forEach((gg)=>{ const level=gg.subject.replace(/ [AB]$/,"");
           const price=PRICE_TABLE[level]||0; const sum=gg.amts.reduce((a,b)=>a+b,0);
-          if(gg.amts.length===1 || sum<=price) mathLines.push({ subject:gg.subject, room:gg.room, amount:sum, price });
-          else gg.amts.forEach((a)=> mathLines.push({ subject:gg.subject, room:gg.room, amount:a, price })); });
-        const nMath=mathLines.length;
+          // 기준 금액: 합이 정가 이하면 합산(분할납), 아니면 항목별
+          const base=(gg.amts.length===1 || (price&&sum<=price)) ? [sum] : gg.amts.slice();
+          // 정가 초과 라인은 정가 이하로 분할
+          const parts=[];
+          base.forEach((a)=>{ if(price>0){ let rem=a; while(rem>price){ parts.push(price); rem-=price; } if(rem>0) parts.push(rem); }
+                              else parts.push(a); });
+          const split=parts.length>base.length; // 정가 초과로 쪼개진 경우
+          parts.forEach((a,i)=>{ const room=gg.room+(split&&parts.length>1?" "+String.fromCharCode(65+i):"");
+            mathLines.push({ subject:gg.subject, room, amount:a, price, split }); }); });
         mathLines.forEach((ml)=>{ const diff=ml.price-ml.amount; const notes=[];
-          if(nMath>=2 && diff>0){ const jung=Math.min(50000,diff); notes.push("중복수강 할인 −"+won(jung)+"원");
+          if(!ml.split && nMath>=2 && diff>0){ const jung=Math.min(50000,diff); notes.push("중복수강 할인 −"+won(jung)+"원");
             const sigan=diff-jung; if(sigan>0) notes.push("중복시간 할인 −"+won(sigan)+"원"); }
           out.push({ subject:ml.subject, room:ml.room, amount:ml.amount, isEtc:false, note:notes.join(" / ") });
         });
