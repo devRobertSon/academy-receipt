@@ -230,6 +230,18 @@
 
   function studentKey(r){ const base=r.name+"|"+r.grade; const n=splitMap[r.id]||1; return n>1? base+"|#"+n : base; }
 
+  // 교습과목별 정가(게시표) + 레벨 미지정 시 학생 학년으로 결정
+  const PRICE_TABLE={"과학 초등":200000,"과학 중등":250000,"과학 고등":300000,
+    "수학 초등":200000,"수학 중등":250000,"수학 고등":300000,"진학지도":300000};
+  function bandFromGrade(g){ const c=String(g).charAt(0); return c==="초"?"초등":c==="중"?"중등":c==="고"?"고등":""; }
+  function finalizeSubject(subject,grade){
+    // 레벨이 필요한 순수 "수학"/"과학"에만 학생 학년으로 레벨을 붙인다.
+    // (진학지도·기타경비·이미 레벨 있는 값은 그대로)
+    if(subject!=="수학" && subject!=="과학") return subject;
+    const b=bandFromGrade(grade);
+    return b ? subject+" "+b : subject;                     // 예: 방학특강 "수학" → "수학 중등"
+  }
+
   function findSuspects(recs){
     const byGM={}; // name|grade|month -> item counts
     recs.forEach((r)=>{ const k=r.name+"|"+r.grade+"|"+r.month; (byGM[k]=byGM[k]||[]).push(r.item); });
@@ -302,15 +314,19 @@
 
     const byMonth={}; const items=[];
     Object.keys(map).forEach((sk)=>{ const name=sk.split("|")[0];
-      Object.keys(map[sk]).forEach((month)=>{ const lines=map[sk][month];
-        // 개설반 A/B: 같은 교습과목+키워드가 2개 이상이면 A,B…
-        const grp={}; lines.forEach((l)=>{ const g=l.subject+"|"+l.keyword; (grp[g]=grp[g]||[]).push(l); });
+      Object.keys(map[sk]).forEach((month)=>{ const raw=map[sk][month];
+        // 레벨 확정(학년 기준) + 정가/기타경비 확정
+        const lines=raw.map((l)=>{ const fsub=finalizeSubject(l.subject,l.grade);
+          const price=PRICE_TABLE[fsub]!=null?PRICE_TABLE[fsub]:(l.price||0);
+          return { subject:fsub, keyword:l.keyword||"", amount:l.amount, payDate:l.payDate, price, isEtc:fsub==="기타경비" }; });
+        // 개설반 A/B: 같은 교습과목+키워드가 2개 이상이면 A,B… (기타경비 제외)
+        const grp={}; lines.forEach((l)=>{ if(l.isEtc) return; const g=l.subject+"|"+l.keyword; (grp[g]=grp[g]||[]).push(l); });
         Object.values(grp).forEach((g)=>{ if(g.length>=2) g.forEach((l,i)=>l._ab=" "+String.fromCharCode(65+i)); });
-        const subjects=new Set(lines.map((l)=>l.subject)); const multi=subjects.size>=2;
+        const subjects=new Set(lines.filter((l)=>!l.isEtc).map((l)=>l.subject)); const multi=subjects.size>=2;
         const rdate=lines.reduce((mx,l)=>(dkey(l.payDate)>dkey(mx)?l.payDate:mx), "");
         const it={ name, month, rdate, lines: lines.map((l)=>({
-          subject:l.subject, room:(l.keyword||"")+(l._ab||""), amount:l.amount,
-          note:(multi && l.price>0 && l.amount<l.price) ? ("중복수강 할인 −"+won(l.price-l.amount)+"원") : "" })) };
+          subject:l.subject, room:(l.keyword||"")+(l._ab||""), amount:l.amount, isEtc:l.isEtc,
+          note:(!l.isEtc && multi && l.price>0 && l.amount<l.price) ? ("중복수강 할인 −"+won(l.price-l.amount)+"원") : "" })) };
         items.push(it); (byMonth[month]=byMonth[month]||[]).push(it);
       }); });
 
@@ -335,12 +351,18 @@
     const rd=String(it.rdate||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
     const rdateLabel= rd ? rd[1]+"년 "+parseInt(rd[2],10)+"월 "+parseInt(rd[3],10)+"일"
       : (ym?ym[1]+"년 "+parseInt(ym[2],10)+"월 &nbsp;&nbsp;&nbsp; 일":esc(ymLabel));
-    const course=(s)=> s==="진학지도"?"진학지도":(s==="기타"?"기타":"보습");
-    let body=it.lines.map((l)=>
-      "<tr><td>"+esc(course(l.subject))+"</td><td>"+esc(l.subject)+"</td><td>"+esc(l.room)+
-      '</td><td class="n">'+won(l.amount)+'</td><td class="n">0</td><td class="n">'+won(l.amount)+
-      "</td><td>"+esc(l.note)+"</td></tr>").join("");
-    const total=it.lines.reduce((a,l)=>a+l.amount,0);
+    const course=(l)=> l.isEtc?"기타경비":(l.subject==="진학지도"?"진학지도":"보습");
+    let body=it.lines.map((l)=>{
+      const A=l.isEtc?0:l.amount, B=l.isEtc?l.amount:0;
+      const target=l.isEtc?(l.room||"식사비"):l.subject;
+      const room=l.isEtc?"":l.room;
+      return "<tr><td>"+esc(course(l))+"</td><td>"+esc(target)+"</td><td>"+esc(room)+
+        '</td><td class="n">'+won(A)+'</td><td class="n">'+won(B)+'</td><td class="n">'+won(l.amount)+
+        "</td><td>"+esc(l.note)+"</td></tr>";
+    }).join("");
+    const totalA=it.lines.reduce((a,l)=>a+(l.isEtc?0:l.amount),0);
+    const totalB=it.lines.reduce((a,l)=>a+(l.isEtc?l.amount:0),0);
+    const total=totalA+totalB;
     return '<div class="receipt">'+
       '<div class="rc-top"><span class="rc-serial">일련번호 제 '+esc(it.serial||"")+' 호</span>'+
       '<span class="rc-formno">■ 학원의 설립·운영 및 과외교습에 관한 법률 시행규칙 [별지 제24호서식]</span></div>'+
@@ -352,9 +374,9 @@
         "<tr><th>학습자 성명</th><td colspan='3'>"+esc(it.name)+"</td></tr>"+
       "</tbody></table>"+
       '<table class="rc-items"><thead><tr><th>교습과정</th><th>교습대상</th><th>개설반</th><th>교습비(A)</th><th>기타경비(B)</th><th>합계(A+B)</th><th>비고</th></tr></thead><tbody>'+
-        body+'<tr class="sum"><td colspan="3" style="text-align:center">합 계</td><td class="n">'+won(total)+
-        '</td><td class="n">0</td><td class="n">'+won(total)+"</td><td></td></tr></tbody></table>"+
-      '<div class="rc-note">※ 기타경비 없음. 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다.</div>'+
+        body+'<tr class="sum"><td colspan="3" style="text-align:center">합 계</td><td class="n">'+won(totalA)+
+        '</td><td class="n">'+won(totalB)+'</td><td class="n">'+won(total)+"</td><td></td></tr></tbody></table>"+
+      '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비 등은 기타경비(B)에 표기됩니다.</div>'+
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br /><span style="letter-spacing:.1em">영수일자 : '+rdateLabel+'</span></div>'+
       '<div class="rc-sign">'+esc(ACADEMY.name)+" · "+esc(ACADEMY.owner)+
         ' <img class="rc-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
