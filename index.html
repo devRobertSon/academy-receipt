@@ -60,6 +60,15 @@
   details.maplist th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
   details.maplist .scroll { max-height: 460px; overflow: auto; border: 1px solid #eee; border-radius: 8px; }
 
+  /* 제외된 항목 */
+  details.excluded { margin: 12px 0; border: 1px solid rgba(185,28,28,.4); background: rgba(185,28,28,.05);
+    border-radius: 10px; padding: 10px 14px; }
+  details.excluded > summary { cursor: pointer; font-weight: 600; color: #b91c1c; }
+  details.excluded .scroll { max-height: 320px; overflow: auto; border: 1px solid #eee; border-radius: 8px; margin-top: 10px; background: #fff; }
+  details.excluded table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+  details.excluded th, details.excluded td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  details.excluded th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
+
   /* 영수증 (별지 제24호서식) */
   #receipts { margin-top: 12px; }
   .receipt { border: 1.5px solid #222; padding: 18px 22px; margin: 0 auto 22px; max-width: 780px; background: #fff; }
@@ -136,6 +145,7 @@
 </div>
 <div id="status" class="muted"></div>
 <div id="mapstatus" class="muted"></div>
+<div id="excluded"></div>
 <div id="gate"></div>
 </section>
 
@@ -292,7 +302,7 @@
     // 수입: 수납현황(현금·환불 제외) → 학생별·납부일·수납월
     const income=[]; const cashByMonth={}; const recByMonth={};
     ALL.forEach((r)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
-      if(isMeal(r.item)) return;                                     // 식사비 제외
+      if(!classifyItem(r.item).matched) return;                      // 비교습(식사·간식·미분류 등) 제외
       const amt=r.amount||0; if(!amt) return; const m=r.month;
       recByMonth[m]=(recByMonth[m]||0)+amt;                          // 영수증 수입(현금 포함)
       const cls=classifyMethod(r.method);
@@ -413,34 +423,67 @@
 
   function rebuildRecords(){ splitMap={}; splitConfirmed=false; process(); buildCashbook(); }
 
-  // 기타수납은 자동 매핑하지 않고 항상 건별 수기입력(perRecord) 대상으로 둔다.
-  const isEtc = (item) => item.replace(/\s/g,"") === "기타수납";
-  // 식사비는 교습비 영수증·현금출납부에서 완전히 제외한다.
-  const isMeal = (item) => /식사/.test(String(item));
+  // 비교습(식사·간식·급식·기타수납 등)은 교습비 영수증·현금출납부에서 완전히 제외한다.
+  const isNonTuition = (item) => /식사|간식|급식|중식|석식/.test(String(item)) ||
+    String(item).replace(/\s/g,"") === "기타수납";
+
+  // 2층: 우선순위 규칙 분류기 — 항목 문자열에서 과목토큰을 순서대로 탐색(요일·시간·교재명·강사 무시).
+  function classifyByRule(item){
+    const t=String(item);
+    const R=[
+      [/면담|면접|[0-9]차대비/, "진학지도","진학지도"],
+      [/물리/, "과학 고등","물리"], [/화학/, "과학 고등","화학"], [/생명|유전/, "과학 고등","생명"],
+      [/지구/, "과학 고등","지구"], [/통합과학/, "과학 고등","통합과학"], [/정보/, "과학 고등","정보"],
+      [/실험과학/, "과학 중등","실험과학"], [/과학정리/, "과학 중등","과학고파이널"],
+      [/영재고파이널과학/, "과학 중등","영재학교파이널"], [/중학과학|중등과학/, "과학 중등","중학과학"],
+      [/올수지/, "수학 중등 B","올수지"],
+      [/KMO정수|영재-?정수/, "수학 중등 B","KMO정수"], [/KMO대수|영재-?대수/, "수학 중등 B","KMO대수"],
+      [/KMO기하|영재-?기하/, "수학 중등 B","KMO기하"],
+      [/창의수학\(대수\/기하\)/, "수학 중등 B","창의수학(대수/기하)"],
+      [/창의수학\(조합\/정수\)/, "수학 중등 B","창의수학(조합/정수)"], [/창의수학/, "수학 중등 B","창의수학"],
+      [/금과고대비수학|탐구수학/, "수학 중등 B","탐구수학"], [/영재모의고사/, "수학 중등 B","영재학교파이널"],
+      [/기출문제/, "수학 중등 B","영재학교파이널(기출)"],
+      [/과고 ?미적분|충남과고 ?미적분/, "수학 고등 B","미적분"],
+      [/과고 ?확통|충남과고 ?확통/, "수학 고등 B","확통"], [/과고[123] ?수학/, "수학 고등 B","교과"],
+      [/공수 ?1|공통수학 ?1/, "수학 고등 A","공수1"], [/공수 ?2|공통수학 ?2|공통수 ?2/, "수학 고등 A","공수2"],
+      [/미적분 ?1/, "수학 고등 A","미적분1"], [/미적분/, "수학 고등 A","미적분"],
+      [/확통|확률과통계/, "수학 고등 A","확통"], [/기하/, "수학 고등 A","기하"],
+      [/수2/, "수학 고등 A","수2"], [/대수/, "수학 고등 A","대수"], [/공수/, "수학 고등 A","공수"],
+      [/EMF|EMM|EMH|초등수학|초등심화/, "수학 초등 A","교과"],
+      [/쎈 ?중|중등쎈|쎈 ?[123][- ]?[12]|쎈[123]/, "수학 중등 A","교과"],
+      [/MMF|MMM|개념유형|중등수학|중등내신|중학|중[123]/, "수학 중등 A","교과"],
+      [/고등수학클리닉|수학클리닉|M클리닉|고[123]?문제풀이|방학특강|고등수학|고등내신/, "수학 고등 A","교과"],
+    ];
+    for(const [re,sub,room] of R){ if(re.test(t)) return { subject:sub, room }; }
+    return null;
+  }
+
+  // 3층 통합 분류: ① 비교습 제외 → ② CSV 매핑(수기 확정) → ③ 규칙 → ④ 나머지 제외
+  function classifyItem(item){
+    if(isNonTuition(item)) return { excluded:true };
+    if(overrides[item]) return { ...overrides[item], matched:true };
+    for(const m of MAPPING){ if(item.indexOf(m.kw)>=0) return { subject:m.subject, room:m.room||m.kw, matched:true }; }
+    const r=classifyByRule(item);
+    if(r) return { ...r, matched:true };
+    return { excluded:true };
+  }
   function resolve(rec){
     if(overridesById[rec.id]) return { ...overridesById[rec.id], matched:true };
-    if(isEtc(rec.item)) return { subject:"", room:"", matched:false, perRecord:true };
-    if(overrides[rec.item]) return { ...overrides[rec.item], matched:true };
-    for(const m of MAPPING){ if(rec.item.indexOf(m.kw)>=0) return { subject:m.subject, room:m.room||m.kw, matched:true }; }
-    return { subject:"", room:"", matched:false, perRecord:false };
+    return classifyItem(rec.item);
   }
 
   function process(){
     if(!ALL.length) return;
     const dropRefund=excludeRefund.checked;
-    // 유효 결제 + 매핑
-    const recs=[];
+    const recs=[]; const excluded=[];
     ALL.forEach((r,i)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
-      if(isMeal(r.item)) return;                                   // 식사비 제외
-      const rec={ id:i, ...r }; recs.push({ ...rec, ...resolve(rec) }); });
+      const rec={ id:i, ...r }; const res=resolve(rec);
+      if(res.excluded){ excluded.push(rec); return; }              // 비교습·미분류 → 제외
+      recs.push({ ...rec, ...res }); });
 
-    // 1) 수기입력 게이트 — 미분류(항목명) + 기타수납(건별)
-    const needStr=[...new Set(recs.filter((r)=>!r.matched && !r.perRecord).map((r)=>r.item))];
-    const needRec=recs.filter((r)=>!r.matched && r.perRecord);
-    if(needStr.length || needRec.length){ renderManualGate(needStr, needRec, recs); receipts.innerHTML=""; printbtn.disabled=true;
-      statusEl.textContent="입력 필요: 미분류 "+needStr.length+"종, 기타수납 "+needRec.length+"건"; return; }
+    renderExcluded(excluded);                                       // 제외된 항목 목록
 
-    // 2) 동명이인 게이트 (같은 이름+학년에서 동일 수납항목이 그 달에 2번 이상 → 후보)
+    // 동명이인 게이트 (같은 이름+학년에서 동일 수납항목이 그 달에 2번 이상 → 후보)
     const suspects=findSuspects(recs);
     if(suspects.length && !splitConfirmed){ renderSuspectGate(suspects, recs); receipts.innerHTML=""; printbtn.disabled=true;
       statusEl.textContent="동명이인 확인 필요 "+suspects.length+"건"; return; }
@@ -473,59 +516,23 @@
     return [...susNG];
   }
 
-  function renderManualGate(stringItems, perRecs, recs){
-    let h='<div class="gate"><h2>⚠ 영수증 생성 전 입력 필요</h2>';
-
-    // 참고 — 입력이 필요한 학생들이 실제로 듣는 반과 수납처리(매핑)된 항목
-    const affKeys=[...new Set((recs||[]).filter((r)=>!r.matched).map((r)=>r.name+"|"+r.grade))];
-    if(affKeys.length){
-      h+='<details class="ctx" open><summary>참고 — 해당 학생 '+affKeys.length+'명이 듣는 반 · 수납처리된 항목</summary>';
-      affKeys.sort((a,b)=>a.localeCompare(b,"ko")).forEach((key)=>{ const [nm,gr]=key.split("|");
-        const list=(recs||[]).filter((r)=>r.name===nm && r.grade===gr)
-          .sort((a,b)=>String(a.month).localeCompare(String(b.month))||dkey(a.payDate).localeCompare(dkey(b.payDate)));
-        const rooms=[...new Set(list.filter((r)=>r.matched).map((r)=>r.subject+(r.room?" "+r.room:"")))];
-        h+='<div class="grp"><b>'+esc(nm)+'</b> <span class="muted">('+esc(gr||"학년미상")+')</span>'+
-          '<div class="muted">듣는 반: '+(rooms.length?rooms.map(esc).join(" · "):"—")+'</div>'+
-          '<table><thead><tr><th>수납월</th><th>수납항목(원문)</th><th>납부액</th><th>매핑 결과</th></tr></thead><tbody>';
-        list.forEach((r)=>{ const res = r.matched ? esc(r.subject+(r.room?" / "+r.room:""))
-            : (r.perRecord ? '<span class="warn">기타수납 → 입력 필요</span>' : '<span class="warn">⚠ 미분류 → 입력 필요</span>');
-          h+='<tr><td>'+esc(r.month)+'</td><td>'+esc(r.item)+'</td><td style="text-align:right">'+won(r.amount)+'</td><td>'+res+'</td></tr>'; });
-        h+='</tbody></table></div>'; });
-      h+='</details>';
-    }
-
-    if(stringItems.length){
-      h+='<p class="muted"><b>미분류 수납항목 '+stringItems.length+'종</b> — 교습과목(예: 수학 중등 A / 과학 고등)과 세부반</p>'+
-        '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
-      stringItems.forEach((it,i)=>{ h+='<tr><td>'+esc(it)+'</td>'+
-        '<td><input data-t="str" data-i="'+i+'" data-f="subject" value=""></td>'+
-        '<td><input data-t="str" data-i="'+i+'" data-f="room" value=""></td></tr>'; });
-      h+='</tbody></table></div>';
-    }
-    if(perRecs.length){
-      h+='<p class="muted"><b>기타수납 '+perRecs.length+'건</b> — 각 건을 실제 교습과목으로 입력하세요. (기타수납으로는 영수증이 나오지 않습니다)</p>'+
-        '<div class="wrap"><table><thead><tr><th>학생</th><th>수납월</th><th>납부액</th><th>납부일</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
-      perRecs.forEach((r)=>{ h+='<tr><td>'+esc(r.name)+' <span class="muted">'+esc(r.grade)+'</span></td><td>'+esc(r.month)+'</td>'+
-        '<td style="text-align:right">'+won(r.amount)+'</td><td>'+esc(r.payDate||"-")+'</td>'+
-        '<td><input data-t="rec" data-id="'+r.id+'" data-f="subject" value=""></td>'+
-        '<td><input data-t="rec" data-id="'+r.id+'" data-f="room" value=""></td></tr>'; });
-      h+='</tbody></table></div>';
-    }
-    h+='<div class="bar"><button id="mgok">이대로 진행</button>'+
-      '<span class="muted">모든 교습과목을 채워야 진행됩니다.</span></div></div>';
-    gateEl.innerHTML=h;
-    $("mgok").addEventListener("click", ()=>{
-      const strMap={}, recMap={};
-      gateEl.querySelectorAll('input[data-t="str"]').forEach((inp)=>{ const i=+inp.dataset.i;
-        (strMap[i]=strMap[i]||{item:stringItems[i]})[inp.dataset.f]=inp.value.trim(); });
-      gateEl.querySelectorAll('input[data-t="rec"]').forEach((inp)=>{ const id=+inp.dataset.id;
-        (recMap[id]=recMap[id]||{id:id})[inp.dataset.f]=inp.value.trim(); });
-      const strVals=Object.values(strMap), recVals=Object.values(recMap);
-      if(strVals.some((v)=>!v.subject) || recVals.some((v)=>!v.subject)){ alert("교습과목을 모두 입력해 주세요."); return; }
-      strVals.forEach((v)=>{ overrides[v.item]={ subject:v.subject, room:v.room||"" }; });
-      recVals.forEach((v)=>{ overridesById[v.id]={ subject:v.subject, room:v.room||"" }; });
-      process();
-    });
+  // 제외된 항목(비교습·미분류) 목록 — 실제 교습이 섞여 있으면 수납항목매핑.csv에 추가하면 됨
+  function renderExcluded(list){
+    const el=$("excluded"); if(!el) return;
+    if(!list || !list.length){ el.innerHTML=""; return; }
+    const byItem={};
+    list.forEach((r)=>{ const k=r.item||"(빈 항목)";
+      const v=(byItem[k]=byItem[k]||{ cnt:0, sum:0, months:new Set() });
+      v.cnt++; v.sum+=r.amount||0; if(r.month) v.months.add(r.month); });
+    const rows=Object.entries(byItem).sort((a,b)=>b[1].sum-a[1].sum);
+    const totalSum=list.reduce((s,r)=>s+(r.amount||0),0);
+    let h='<details class="excluded"><summary>🚫 영수증 제외 항목 '+rows.length+'종 · '+list.length+'건 · '+won(totalSum)+'원 '+
+      '<span class="muted">(교습과목 미매칭·식사/간식 등 — 실제 교습이면 <code>수납항목매핑.csv</code>에 추가)</span></summary>'+
+      '<div class="scroll"><table><thead><tr><th>수납항목(원문)</th><th>건수</th><th>금액합계</th><th>수납월</th></tr></thead><tbody>';
+    rows.forEach(([item,v])=>{ h+='<tr><td>'+esc(item)+'</td><td style="text-align:right">'+v.cnt+
+      '</td><td style="text-align:right">'+won(v.sum)+'</td><td>'+esc([...v.months].sort().join(", "))+'</td></tr>'; });
+    h+='</tbody></table></div></details>';
+    el.innerHTML=h;
   }
 
   function renderSuspectGate(suspectNG, recs){
