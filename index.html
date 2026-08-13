@@ -11,12 +11,19 @@
   }
   h1 { font-size: 1.35rem; margin-bottom: 4px; }
   .sub { color: #666; margin-top: 0; font-size: .9rem; }
-  #drop {
+  .drop {
     border: 2px dashed #999; border-radius: 12px; padding: 40px 20px;
     text-align: center; cursor: pointer; transition: .15s; margin: 18px 0;
   }
-  #drop.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
-  #drop b { color: #2563eb; }
+  .drop.hover { border-color: #2563eb; background: rgba(37,99,235,.06); }
+  .drop b { color: #2563eb; }
+
+  /* 탭 */
+  .tabs { display: flex; gap: 6px; border-bottom: 2px solid #ddd; margin: 12px 0 4px; }
+  .tab { background: transparent; color: #555; border: 0; border-bottom: 3px solid transparent;
+    border-radius: 8px 8px 0 0; padding: 9px 16px; font-size: .98rem; cursor: pointer; }
+  .tab.on { color: #2563eb; border-bottom-color: #2563eb; font-weight: 700; }
+  .panel[hidden] { display: none; }
   .opt { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
   button {
     font-size: 1rem; padding: 10px 18px; border: 0; border-radius: 8px;
@@ -53,6 +60,15 @@
   details.maplist th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
   details.maplist .scroll { max-height: 460px; overflow: auto; border: 1px solid #eee; border-radius: 8px; }
 
+  /* 제외된 항목 */
+  details.excluded { margin: 12px 0; border: 1px solid rgba(185,28,28,.4); background: rgba(185,28,28,.05);
+    border-radius: 10px; padding: 10px 14px; }
+  details.excluded > summary { cursor: pointer; font-weight: 600; color: #b91c1c; }
+  details.excluded .scroll { max-height: 320px; overflow: auto; border: 1px solid #eee; border-radius: 8px; margin-top: 10px; background: #fff; }
+  details.excluded table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+  details.excluded th, details.excluded td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  details.excluded th { background: rgba(0,0,0,.05); position: sticky; top: 0; }
+
   /* 영수증 (별지 제24호서식) */
   #receipts { margin-top: 12px; }
   .receipt { border: 1.5px solid #222; padding: 18px 22px; margin: 0 auto 22px; max-width: 780px; background: #fff; }
@@ -75,21 +91,48 @@
   .rc-sign { margin-top: 6px; text-align: right; font-size: .9rem; }
   .rc-seal { height: 48px; width: auto; vertical-align: middle; margin-left: 8px; }
 
+  /* 현금출납부 */
+  .cbsheet { border: 1.5px solid #222; padding: 16px 20px; margin: 0 auto 22px; max-width: 820px; background: #fff; }
+  .cbsheet, .cbsheet * { color: #111 !important; }
+  .cb-title { text-align: center; font-size: 1.3rem; font-weight: 700; letter-spacing: .3em; margin: 2px 0; }
+  .cb-sub { text-align: center; font-size: .9rem; padding-bottom: 8px; border-bottom: 2px solid #222; margin-bottom: 8px; }
+  .cb-recon { font-size: .78rem; color: #555 !important; margin: 4px 0 8px; }
+  table.cb { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  table.cb th, table.cb td { border: 1px solid #555; padding: 4px 8px; white-space: nowrap; }
+  table.cb th { background: #f1f1f1; text-align: center; }
+  table.cb td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  table.cb td.desc { white-space: normal; }
+  table.cb tr.carry td, table.cb tr.sum td { font-weight: 700; background: #fafafa; }
+  table.cb tr.out td.desc { color: #7a2e2e !important; }
+  .cb-foot { margin-top: 14px; text-align: right; font-size: .9rem; }
+  .cb-seal { height: 44px; width: auto; vertical-align: middle; margin-left: 8px; }
+
   @media print {
     .screen { display: none !important; }
     body { margin: 0; max-width: none; padding: 0; }
-    #receipts { margin: 0; }
+    #receipts, #cashbook { margin: 0; }
     .receipt { border: 1px solid #000; max-width: none; margin: 0; page-break-after: always; }
+    .cbsheet { border: 1px solid #000; max-width: none; margin: 0; page-break-after: always; }
+    body[data-tab="receipt"] #cashbook { display: none !important; }
+    body[data-tab="cashbook"] #receipts { display: none !important; }
   }
 </style>
 
 <div class="screen">
-<h1>교습비등 영수증 생성</h1>
+<h1>열매맺는나무알파학원 회계 도구</h1>
+
+<div class="tabs">
+  <button class="tab on" data-tab="receipt">교습비 영수증</button>
+  <button class="tab" data-tab="cashbook">현금출납부</button>
+</div>
+
+<!-- ── 탭1: 교습비 영수증 ── -->
+<section class="panel" data-panel="receipt">
 <p class="sub">수납현황 <code>.xls / .xlsx / .csv</code>를 <b>여러 개 한 번에</b> 올리면, 실제 수강한
 <b>수납항목</b>을 <code>수납항목매핑.csv</code>로 교습과목에 매핑해 <b>별지 제24호서식</b> 영수증을 만듭니다.
 학생은 <b>이름+학년</b>으로 구분하고, 영수증은 <b>영수일 오래된 순</b>으로 정렬됩니다.</p>
 
-<div id="drop">
+<div id="drop" class="drop">
   📥 수납현황 엑셀/CSV 파일들을 끌어다 놓거나 <b>클릭해서 선택</b>하세요<br />
   <span class="muted">여러 달·여러 파일을 한 번에 올릴 수 있습니다. 파일은 브라우저 안에서만 처리됩니다.</span>
 </div>
@@ -102,10 +145,30 @@
 </div>
 <div id="status" class="muted"></div>
 <div id="mapstatus" class="muted"></div>
+<div id="excluded"></div>
 <div id="gate"></div>
+</section>
+
+<!-- ── 탭2: 현금출납부 ── -->
+<section class="panel" data-panel="cashbook" hidden>
+<p class="sub"><b>수입</b>은 영수증 탭에 올린 <b>수납현황(현금결제 제외)</b>에서 만들어 <b>월별 영수증 수입과 일치</b>하며,
+각 학생의 <b>납부일(결제시점)</b>이 표시됩니다. <b>지출</b>은 아래에 <b>통장 입출금내역서</b>를 올리면 통장 출금에서 채워집니다.</p>
+
+<div id="cbdrop" class="drop">
+  📥 통장 입출금내역서 <code>.xls / .xlsx / .csv</code>를 끌어다 놓거나 <b>클릭해서 선택</b> (지출용, 선택)<br />
+  <span class="muted">여러 달이 한 파일에 있어도 월별로 나눠 만듭니다. 올리지 않으면 수입(영수증)만 표시됩니다.</span>
+</div>
+<input id="cbfiles" type="file" accept=".xls,.xlsx,.csv" multiple hidden />
+
+<div class="bar">
+  <button id="cbprint" disabled>🖨 인쇄 / PDF 저장</button>
+</div>
+<div id="cbstatus" class="muted"></div>
+</section>
 </div><!-- /.screen -->
 
 <div id="receipts"></div>
+<div id="cashbook"></div>
 
 <div class="screen">
   <details class="maplist">
@@ -180,6 +243,133 @@
   window.__sealErr = function(img){ img.replaceWith(document.createTextNode("(인)")); };
   printbtn.addEventListener("click", ()=>window.print());
 
+  // ══════════ 탭 전환 ══════════
+  document.querySelectorAll(".tab").forEach((t)=>t.addEventListener("click", ()=>{
+    const name=t.dataset.tab;
+    document.querySelectorAll(".tab").forEach((x)=>x.classList.toggle("on", x===t));
+    document.querySelectorAll(".panel").forEach((p)=>{ p.hidden = p.dataset.panel!==name; });
+    document.body.dataset.tab=name;
+  }));
+  document.body.dataset.tab="receipt";
+
+  // ══════════ 현금출납부 ══════════
+  // 수입 = 수납현황(영수증, 현금결제 제외) — 학생별·납부일. 지출 = 통장 출금(선택).
+  const cbdrop=$("cbdrop"), cbfiles=$("cbfiles"), cbstatus=$("cbstatus"),
+    cbprint=$("cbprint"), cashbookEl=$("cashbook");
+  let CBTX=[]; // 통장 출금(지출): {date, month, amount, desc}
+  cbprint.addEventListener("click", ()=>window.print());
+  cbdrop.addEventListener("click", ()=>cbfiles.click());
+  ["dragover","dragenter"].forEach((e)=>cbdrop.addEventListener(e,(ev)=>{ ev.preventDefault(); cbdrop.classList.add("hover"); }));
+  ["dragleave","drop"].forEach((e)=>cbdrop.addEventListener(e,()=>cbdrop.classList.remove("hover")));
+  cbdrop.addEventListener("drop",(ev)=>{ ev.preventDefault(); if(ev.dataTransfer.files.length) cbHandle(ev.dataTransfer.files); });
+  cbfiles.addEventListener("change", ()=>{ if(cbfiles.files.length) cbHandle(cbfiles.files); });
+
+  function cbHandle(fileList){
+    const files=[...fileList].filter((f)=>/\.(xlsx|xls|csv)$/i.test(f.name));
+    if(!files.length){ cbstatus.textContent="엑셀/CSV 파일이 없습니다."; return; }
+    cbstatus.textContent="통장 내역 읽는 중…";
+    Promise.all(files.map(readRows)).then((rowsList)=>{
+      CBTX=[]; rowsList.forEach((rows)=>{ if(rows) cbExtractBank(rows); });
+      buildCashbook();
+    }).catch((err)=>{ cbstatus.innerHTML='<span class="err">읽기 오류: '+esc(err.message)+'</span>'; });
+  }
+
+  // 통장 입출금내역서에서 '출금(지출)'만 추출
+  function cbExtractBank(rows){
+    let hi=-1, H={};
+    for(let i=0;i<rows.length;i++){ const r=(rows[i]||[]).map((c)=>String(c).replace(/\s/g,""));
+      if(r.some((c)=>c.indexOf("거래일자")>=0)){ hi=i;
+        const find=(...ks)=>{ for(const k of ks){ const j=r.findIndex((c)=>c.indexOf(k)>=0); if(j>=0) return j; } return -1; };
+        H.date=find("거래일자"); H.out=find("출금"); H.in=find("입금");
+        H.desc1=find("거래기록사항"); H.desc2=find("거래내용"); break; } }
+    if(hi<0) return;
+    for(let i=hi+1;i<rows.length;i++){ const r=rows[i]; if(!r) continue;
+      const date=fmtDate(r[H.date]); if(!date) continue;
+      const outAmt=toNumber(r[H.out]); if(!outAmt) continue;         // 지출(출금)만
+      const a=s(r[H.desc2]), b=s(r[H.desc1]);
+      const desc=(b&&a&&b!==a)? a+" · "+b : (b||a);
+      CBTX.push({ date, month:date.slice(0,7), amount:outAmt, desc }); }
+  }
+
+  function classifyMethod(m){ const t=String(m).replace(/\s/g,"");
+    if(/현금/.test(t)) return "현금";
+    if(/카드/.test(t)) return "카드";
+    if(/(무통장|계좌|이체|온라인|가상|입금|폰뱅|이니시스|간편)/.test(t)) return "무통장";
+    return t? "기타" : ""; }
+
+  function buildCashbook(){
+    const dropRefund=excludeRefund.checked;
+    // 수입: 수납현황(현금·환불 제외) → 학생별·납부일·수납월
+    const income=[]; const cashByMonth={}; const recByMonth={};
+    ALL.forEach((r)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
+      if(!classifyItem(r.item).matched) return;                      // 비교습(식사·간식·미분류 등) 제외
+      const amt=r.amount||0; if(!amt) return; const m=r.month;
+      recByMonth[m]=(recByMonth[m]||0)+amt;                          // 영수증 수입(현금 포함)
+      const cls=classifyMethod(r.method);
+      if(cls==="현금"){ cashByMonth[m]=(cashByMonth[m]||0)+amt; return; } // 현금 제외
+      income.push({ month:m, name:r.name, payDate:r.payDate, amount:amt,
+        method: (cls==="카드"||cls==="무통장")? cls : (cls||"") }); });
+
+    const months=[...new Set(income.map((r)=>r.month).concat(CBTX.map((t)=>t.month)))]
+      .filter((m)=>m && m!=="월미상").sort();
+    if(!months.length){ cashbookEl.innerHTML=""; cbprint.disabled=true;
+      cbstatus.textContent = ALL.length? "" : "먼저 [교습비 영수증] 탭에서 수납현황을 올려주세요."; return; }
+
+    let carry=0; const pages=[];
+    months.forEach((m)=>{
+      const inMap={};
+      income.filter((r)=>r.month===m).forEach((r)=>{ const k=r.payDate+"|"+r.name+"|"+r.method;
+        (inMap[k]=inMap[k]||{ date:r.payDate, name:r.name, method:r.method, amount:0 }).amount+=r.amount; });
+      const inLines=Object.values(inMap).map((v)=>({ kind:"in", date:v.date, amount:v.amount,
+        desc:v.name+(v.method?" ("+v.method+")":"") }));
+      const outLines=CBTX.filter((t)=>t.month===m).map((t)=>({ kind:"out", date:t.date, amount:t.amount, desc:t.desc }));
+      const lines=inLines.concat(outLines).sort((a,b)=>dkey(a.date).localeCompare(dkey(b.date))
+        || (a.kind===b.kind?0:(a.kind==="in"?-1:1)));
+      const sumIn=inLines.reduce((x,l)=>x+l.amount,0), sumOut=outLines.reduce((x,l)=>x+l.amount,0);
+      const opening=carry; let bal=carry;
+      lines.forEach((l)=>{ bal += (l.kind==="in"? l.amount : -l.amount); l.bal=bal; });
+      carry=bal;
+      pages.push({ month:m, opening, closing:bal, sumIn, sumOut, lines,
+        cashM: cashByMonth[m]||0, recTotal: recByMonth[m]||sumIn });
+    });
+
+    cashbookEl.innerHTML = pages.map(cbPageHTML).join("");
+    cbprint.disabled = pages.length===0;
+    let st = pages.length+"개월 · 현금출납부 "+pages.length+"장";
+    if(METHOD_COL){ const totCash=Object.values(cashByMonth).reduce((a,b)=>a+b,0);
+      st += " · 결제수단 컬럼 '"+METHOD_COL+"' 감지(현금 "+won(totCash)+"원 제외)"; }
+    else st += " · ⚠ 수납현황에 결제수단 컬럼이 없어 현금을 구분하지 못했습니다(전액 포함)";
+    st += CBTX.length? " · 지출 "+CBTX.length+"건 반영" : " · 지출 없음(통장 미첨부)";
+    cbstatus.innerHTML = METHOD_COL? esc(st) : '<span class="err">'+esc(st)+'</span>';
+    if(document.body.dataset.tab==="cashbook") cashbookEl.scrollIntoView({behavior:"smooth", block:"start"});
+  }
+
+  function cbPageHTML(p){
+    const ym=String(p.month).match(/^(\d{4})-(\d{2})$/);
+    const label=ym? ym[1]+"년 "+parseInt(ym[2],10)+"월" : p.month;
+    const mmdd=(d)=>{ const m=String(d).match(/^\d{4}-(\d{2})-(\d{2})$/); return m? m[1]+"/"+m[2] : ""; };
+    let rows='<tr class="carry"><td></td><td class="desc">전월이월</td><td class="n"></td><td class="n"></td><td class="n">'+won(p.opening)+'</td></tr>';
+    p.lines.forEach((l)=>{ rows+='<tr class="'+(l.kind==="out"?"out":"")+'">'+
+      '<td>'+esc(mmdd(l.date))+'</td><td class="desc">'+esc(l.desc)+'</td>'+
+      '<td class="n">'+(l.kind==="in"?won(l.amount):"")+'</td>'+
+      '<td class="n">'+(l.kind==="out"?won(l.amount):"")+'</td>'+
+      '<td class="n">'+won(l.bal)+'</td></tr>'; });
+    rows+='<tr class="sum"><td></td><td class="desc">월계</td><td class="n">'+won(p.sumIn)+'</td><td class="n">'+won(p.sumOut)+'</td><td class="n">'+won(p.closing)+'</td></tr>';
+    rows+='<tr class="sum"><td></td><td class="desc">차월이월</td><td class="n"></td><td class="n"></td><td class="n">'+won(p.closing)+'</td></tr>';
+    const recon = p.cashM>0
+      ? "영수증 수입(현금 포함) "+won(p.recTotal)+"원 − 현금 "+won(p.cashM)+"원 = 본 출납부 수입 "+won(p.sumIn)+"원"
+      : "영수증 수입과 일치 — 수입 합계 "+won(p.sumIn)+"원";
+    return '<div class="cbsheet"><div class="cb-title">현 금 출 납 부</div>'+
+      '<div class="cb-sub">'+esc(ACADEMY.name)+' ('+esc(ACADEMY.owner)+') · '+esc(label)+'</div>'+
+      '<div class="cb-recon">※ '+esc(recon)+(CBTX.length?'':' · 지출은 통장 입출금내역서를 올리면 채워집니다.')+
+        ' · 잔액은 장부상(수입−지출) 누계입니다.</div>'+
+      '<table class="cb"><thead><tr><th style="width:60px">일자</th><th>적요</th>'+
+      '<th style="width:110px">수입</th><th style="width:110px">지출</th><th style="width:120px">잔액</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody></table>'+
+      '<div class="cb-foot">'+esc(ACADEMY.owner)+' <img class="cb-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)"></div>'+
+      '</div>';
+  }
+
   // ── 업로드 ──
   drop.addEventListener("click", ()=>filesInput.click());
   ["dragover","dragenter"].forEach((e)=>drop.addEventListener(e,(ev)=>{ ev.preventDefault(); drop.classList.add("hover"); }));
@@ -194,6 +384,7 @@
   let overridesById={};// 기타수납 등 건별 수기입력: recordId -> {subject, keyword, price}
   let splitMap={};     // 동명이인 분리: recordId -> personNo (>=1)
   let splitConfirmed=false;
+  let METHOD_COL="";   // 수납현황에서 감지된 결제수단 컬럼명("" = 미발견)
 
   // 엑셀은 SheetJS로, CSV는 직접 파싱해 동일한 "행렬(rows)"로 만든다.
   function readRows(f){
@@ -203,56 +394,96 @@
       return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
     });
   }
+  // 결제수단(현금/카드/무통장) 컬럼 후보 — 현금출납부에서 현금 제외에 사용
+  const METHOD_HEADERS=["결제방법","수납방법","결제수단","수납수단","납부방법","결제구분","수납구분","결제유형","수납유형","결제방식","수납방식","수납형태"];
   function extractRows(rows){
-    let hi=-1, idx={};
+    let hi=-1, idx={}, mi=-1;
     for(let i=0;i<Math.min(rows.length,10);i++){ const r=rows[i].map((c)=>String(c).trim());
-      if(r.includes("NO")&&r.includes("이름")&&r.includes("납부액")){ hi=i; for(const k in HEADERS) idx[k]=r.indexOf(HEADERS[k]); break; } }
+      if(r.includes("NO")&&r.includes("이름")&&r.includes("납부액")){ hi=i; for(const k in HEADERS) idx[k]=r.indexOf(HEADERS[k]);
+        for(const c of METHOD_HEADERS){ const j=r.indexOf(c); if(j>=0){ mi=j; METHOD_COL=c; break; } } break; } }
     if(hi<0) return;
     const data=rows.slice(hi+1);
     for(let i=0;i<data.length;i++){ if(s(data[i][idx.no])==="")continue;
       ALL.push({ month: idx.month>=0?monthKey(data[i][idx.month]):"월미상",
         name:s(data[i][idx.name]), grade:s(data[i][idx.grade]),
         item:s(data[i][idx.item]), amount:toNumber(data[i][idx.amount]),
-        status:s(data[i][idx.status]), payDate: idx.payDate>=0?fmtDate(data[i][idx.payDate]):"" }); }
+        status:s(data[i][idx.status]), payDate: idx.payDate>=0?fmtDate(data[i][idx.payDate]):"",
+        method: mi>=0?s(data[i][mi]):"" }); }
   }
   function handleFiles(fileList){
     const files=[...fileList].filter((f)=>/\.(xlsx|xls|csv)$/i.test(f.name));
     if(!files.length){ statusEl.textContent="엑셀/CSV 파일이 없습니다."; return; }
     statusEl.textContent="읽는 중…";
     Promise.all(files.map(readRows)).then((rowsList)=>{
-      ALL=[]; overrides={}; overridesById={}; splitMap={}; splitConfirmed=false;
+      ALL=[]; overrides={}; overridesById={}; splitMap={}; splitConfirmed=false; METHOD_COL="";
       rowsList.forEach((rows)=>{ if(rows) extractRows(rows); });
       rebuildRecords();
     }).catch((err)=>{ statusEl.innerHTML='<span class="err">읽기 오류: '+esc(err.message)+'</span>'; });
   }
 
-  function rebuildRecords(){ splitMap={}; splitConfirmed=false; process(); }
+  function rebuildRecords(){ splitMap={}; splitConfirmed=false; process(); buildCashbook(); }
 
-  // 기타수납은 자동 매핑하지 않고 항상 건별 수기입력(perRecord) 대상으로 둔다.
-  const isEtc = (item) => item.replace(/\s/g,"") === "기타수납";
+  // 비교습(식사·간식·급식·기타수납 등)은 교습비 영수증·현금출납부에서 완전히 제외한다.
+  const isNonTuition = (item) => /식사|간식|급식|중식|석식/.test(String(item)) ||
+    String(item).replace(/\s/g,"") === "기타수납";
+
+  // 2층: 우선순위 규칙 분류기 — 항목 문자열에서 과목토큰을 순서대로 탐색(요일·시간·교재명·강사 무시).
+  function classifyByRule(item){
+    const t=String(item);
+    const R=[
+      [/면담|면접|[0-9]차대비/, "진학지도","진학지도"],
+      [/물리/, "과학 고등","물리"], [/화학/, "과학 고등","화학"], [/생명|유전/, "과학 고등","생명"],
+      [/지구/, "과학 고등","지구"], [/통합과학/, "과학 고등","통합과학"], [/정보/, "과학 고등","정보"],
+      [/실험과학/, "과학 중등","실험과학"], [/과학정리/, "과학 중등","과학고파이널"],
+      [/영재고파이널과학/, "과학 중등","영재학교파이널"], [/중학과학|중등과학/, "과학 중등","중학과학"],
+      [/올수지/, "수학 중등 B","올수지"],
+      [/KMO정수|영재-?정수/, "수학 중등 B","KMO정수"], [/KMO대수|영재-?대수/, "수학 중등 B","KMO대수"],
+      [/KMO기하|영재-?기하/, "수학 중등 B","KMO기하"],
+      [/창의수학\(대수\/기하\)/, "수학 중등 B","창의수학(대수/기하)"],
+      [/창의수학\(조합\/정수\)/, "수학 중등 B","창의수학(조합/정수)"], [/창의수학/, "수학 중등 B","창의수학"],
+      [/금과고대비수학|탐구수학/, "수학 중등 B","탐구수학"], [/영재모의고사/, "수학 중등 B","영재학교파이널"],
+      [/기출문제/, "수학 중등 B","영재학교파이널(기출)"],
+      [/과고 ?미적분|충남과고 ?미적분/, "수학 고등 B","미적분"],
+      [/과고 ?확통|충남과고 ?확통/, "수학 고등 B","확통"], [/과고[123] ?수학/, "수학 고등 B","교과"],
+      [/공수 ?1|공통수학 ?1/, "수학 고등 A","공수1"], [/공수 ?2|공통수학 ?2|공통수 ?2/, "수학 고등 A","공수2"],
+      [/미적분 ?1/, "수학 고등 A","미적분1"], [/미적분/, "수학 고등 A","미적분"],
+      [/확통|확률과통계/, "수학 고등 A","확통"], [/기하/, "수학 고등 A","기하"],
+      [/수2/, "수학 고등 A","수2"], [/대수/, "수학 고등 A","대수"], [/공수/, "수학 고등 A","공수"],
+      [/EMF|EMM|EMH|초등수학|초등심화/, "수학 초등 A","교과"],
+      [/쎈 ?중|중등쎈|쎈 ?[123][- ]?[12]|쎈[123]/, "수학 중등 A","교과"],
+      [/MMF|MMM|개념유형|중등수학|중등내신|중학|중[123]/, "수학 중등 A","교과"],
+      [/고등수학클리닉|수학클리닉|M클리닉|고[123]?문제풀이|방학특강|고등수학|고등내신/, "수학 고등 A","교과"],
+    ];
+    for(const [re,sub,room] of R){ if(re.test(t)) return { subject:sub, room }; }
+    return null;
+  }
+
+  // 3층 통합 분류: ① 비교습 제외 → ② CSV 매핑(수기 확정) → ③ 규칙 → ④ 나머지 제외
+  function classifyItem(item){
+    if(isNonTuition(item)) return { excluded:true };
+    if(overrides[item]) return { ...overrides[item], matched:true };
+    for(const m of MAPPING){ if(item.indexOf(m.kw)>=0) return { subject:m.subject, room:m.room||m.kw, matched:true }; }
+    const r=classifyByRule(item);
+    if(r) return { ...r, matched:true };
+    return { excluded:true };
+  }
   function resolve(rec){
     if(overridesById[rec.id]) return { ...overridesById[rec.id], matched:true };
-    if(isEtc(rec.item)) return { subject:"", room:"", matched:false, perRecord:true };
-    if(overrides[rec.item]) return { ...overrides[rec.item], matched:true };
-    for(const m of MAPPING){ if(rec.item.indexOf(m.kw)>=0) return { subject:m.subject, room:m.room||m.kw, matched:true }; }
-    return { subject:"", room:"", matched:false, perRecord:false };
+    return classifyItem(rec.item);
   }
 
   function process(){
     if(!ALL.length) return;
     const dropRefund=excludeRefund.checked;
-    // 유효 결제 + 매핑
-    const recs=[];
+    const recs=[]; const excluded=[];
     ALL.forEach((r,i)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
-      const rec={ id:i, ...r }; recs.push({ ...rec, ...resolve(rec) }); });
+      const rec={ id:i, ...r }; const res=resolve(rec);
+      if(res.excluded){ excluded.push(rec); return; }              // 비교습·미분류 → 제외
+      recs.push({ ...rec, ...res }); });
 
-    // 1) 수기입력 게이트 — 미분류(항목명) + 기타수납(건별)
-    const needStr=[...new Set(recs.filter((r)=>!r.matched && !r.perRecord).map((r)=>r.item))];
-    const needRec=recs.filter((r)=>!r.matched && r.perRecord);
-    if(needStr.length || needRec.length){ renderManualGate(needStr, needRec, recs); receipts.innerHTML=""; printbtn.disabled=true;
-      statusEl.textContent="입력 필요: 미분류 "+needStr.length+"종, 기타수납 "+needRec.length+"건"; return; }
+    renderExcluded(excluded);                                       // 제외된 항목 목록
 
-    // 2) 동명이인 게이트 (같은 이름+학년에서 동일 수납항목이 그 달에 2번 이상 → 후보)
+    // 동명이인 게이트 (같은 이름+학년에서 동일 수납항목이 그 달에 2번 이상 → 후보)
     const suspects=findSuspects(recs);
     if(suspects.length && !splitConfirmed){ renderSuspectGate(suspects, recs); receipts.innerHTML=""; printbtn.disabled=true;
       statusEl.textContent="동명이인 확인 필요 "+suspects.length+"건"; return; }
@@ -285,59 +516,23 @@
     return [...susNG];
   }
 
-  function renderManualGate(stringItems, perRecs, recs){
-    let h='<div class="gate"><h2>⚠ 영수증 생성 전 입력 필요</h2>';
-
-    // 참고 — 입력이 필요한 학생들이 실제로 듣는 반과 수납처리(매핑)된 항목
-    const affKeys=[...new Set((recs||[]).filter((r)=>!r.matched).map((r)=>r.name+"|"+r.grade))];
-    if(affKeys.length){
-      h+='<details class="ctx" open><summary>참고 — 해당 학생 '+affKeys.length+'명이 듣는 반 · 수납처리된 항목</summary>';
-      affKeys.sort((a,b)=>a.localeCompare(b,"ko")).forEach((key)=>{ const [nm,gr]=key.split("|");
-        const list=(recs||[]).filter((r)=>r.name===nm && r.grade===gr)
-          .sort((a,b)=>String(a.month).localeCompare(String(b.month))||dkey(a.payDate).localeCompare(dkey(b.payDate)));
-        const rooms=[...new Set(list.filter((r)=>r.matched).map((r)=>r.subject+(r.room?" "+r.room:"")))];
-        h+='<div class="grp"><b>'+esc(nm)+'</b> <span class="muted">('+esc(gr||"학년미상")+')</span>'+
-          '<div class="muted">듣는 반: '+(rooms.length?rooms.map(esc).join(" · "):"—")+'</div>'+
-          '<table><thead><tr><th>수납월</th><th>수납항목(원문)</th><th>납부액</th><th>매핑 결과</th></tr></thead><tbody>';
-        list.forEach((r)=>{ const res = r.matched ? esc(r.subject+(r.room?" / "+r.room:""))
-            : (r.perRecord ? '<span class="warn">기타수납 → 입력 필요</span>' : '<span class="warn">⚠ 미분류 → 입력 필요</span>');
-          h+='<tr><td>'+esc(r.month)+'</td><td>'+esc(r.item)+'</td><td style="text-align:right">'+won(r.amount)+'</td><td>'+res+'</td></tr>'; });
-        h+='</tbody></table></div>'; });
-      h+='</details>';
-    }
-
-    if(stringItems.length){
-      h+='<p class="muted"><b>미분류 수납항목 '+stringItems.length+'종</b> — 교습과목(예: 수학 중등 A / 과학 고등)과 세부반</p>'+
-        '<div class="wrap"><table><thead><tr><th>수납항목(원문)</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
-      stringItems.forEach((it,i)=>{ h+='<tr><td>'+esc(it)+'</td>'+
-        '<td><input data-t="str" data-i="'+i+'" data-f="subject" value=""></td>'+
-        '<td><input data-t="str" data-i="'+i+'" data-f="room" value=""></td></tr>'; });
-      h+='</tbody></table></div>';
-    }
-    if(perRecs.length){
-      h+='<p class="muted"><b>기타수납 '+perRecs.length+'건</b> — 각 건을 실제 교습과목으로 입력하세요. (기타수납으로는 영수증이 나오지 않습니다)</p>'+
-        '<div class="wrap"><table><thead><tr><th>학생</th><th>수납월</th><th>납부액</th><th>납부일</th><th>교습과목</th><th>세부반</th></tr></thead><tbody>';
-      perRecs.forEach((r)=>{ h+='<tr><td>'+esc(r.name)+' <span class="muted">'+esc(r.grade)+'</span></td><td>'+esc(r.month)+'</td>'+
-        '<td style="text-align:right">'+won(r.amount)+'</td><td>'+esc(r.payDate||"-")+'</td>'+
-        '<td><input data-t="rec" data-id="'+r.id+'" data-f="subject" value=""></td>'+
-        '<td><input data-t="rec" data-id="'+r.id+'" data-f="room" value=""></td></tr>'; });
-      h+='</tbody></table></div>';
-    }
-    h+='<div class="bar"><button id="mgok">이대로 진행</button>'+
-      '<span class="muted">모든 교습과목을 채워야 진행됩니다.</span></div></div>';
-    gateEl.innerHTML=h;
-    $("mgok").addEventListener("click", ()=>{
-      const strMap={}, recMap={};
-      gateEl.querySelectorAll('input[data-t="str"]').forEach((inp)=>{ const i=+inp.dataset.i;
-        (strMap[i]=strMap[i]||{item:stringItems[i]})[inp.dataset.f]=inp.value.trim(); });
-      gateEl.querySelectorAll('input[data-t="rec"]').forEach((inp)=>{ const id=+inp.dataset.id;
-        (recMap[id]=recMap[id]||{id:id})[inp.dataset.f]=inp.value.trim(); });
-      const strVals=Object.values(strMap), recVals=Object.values(recMap);
-      if(strVals.some((v)=>!v.subject) || recVals.some((v)=>!v.subject)){ alert("교습과목을 모두 입력해 주세요."); return; }
-      strVals.forEach((v)=>{ overrides[v.item]={ subject:v.subject, room:v.room||"" }; });
-      recVals.forEach((v)=>{ overridesById[v.id]={ subject:v.subject, room:v.room||"" }; });
-      process();
-    });
+  // 제외된 항목(비교습·미분류) 목록 — 실제 교습이 섞여 있으면 수납항목매핑.csv에 추가하면 됨
+  function renderExcluded(list){
+    const el=$("excluded"); if(!el) return;
+    if(!list || !list.length){ el.innerHTML=""; return; }
+    const byItem={};
+    list.forEach((r)=>{ const k=r.item||"(빈 항목)";
+      const v=(byItem[k]=byItem[k]||{ cnt:0, sum:0, months:new Set() });
+      v.cnt++; v.sum+=r.amount||0; if(r.month) v.months.add(r.month); });
+    const rows=Object.entries(byItem).sort((a,b)=>b[1].sum-a[1].sum);
+    const totalSum=list.reduce((s,r)=>s+(r.amount||0),0);
+    let h='<details class="excluded"><summary>🚫 영수증 제외 항목 '+rows.length+'종 · '+list.length+'건 · '+won(totalSum)+'원 '+
+      '<span class="muted">(교습과목 미매칭·식사/간식 등 — 실제 교습이면 <code>수납항목매핑.csv</code>에 추가)</span></summary>'+
+      '<div class="scroll"><table><thead><tr><th>수납항목(원문)</th><th>건수</th><th>금액합계</th><th>수납월</th></tr></thead><tbody>';
+    rows.forEach(([item,v])=>{ h+='<tr><td>'+esc(item)+'</td><td style="text-align:right">'+v.cnt+
+      '</td><td style="text-align:right">'+won(v.sum)+'</td><td>'+esc([...v.months].sort().join(", "))+'</td></tr>'; });
+    h+='</tbody></table></div></details>';
+    el.innerHTML=h;
   }
 
   function renderSuspectGate(suspectNG, recs){
@@ -403,8 +598,8 @@
           out.push({ subject:ml.subject, room:ml.room, amount:ml.amount, isEtc:false, note:notes.join(" / ") });
         });
 
-        // ③ 기타경비(식사비 등)
-        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.room||"식사비", amount:l.amount, isEtc:true, note:"" }));
+        // ③ 기타경비(수기지정용; 식사비는 앞에서 제외됨)
+        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.room||"기타경비", amount:l.amount, isEtc:true, note:"" }));
 
         const it={ name, month, rdate, lines: out };
         items.push(it); (byMonth[month]=byMonth[month]||[]).push(it);
@@ -434,7 +629,7 @@
     const course=(l)=> l.isEtc?"기타경비":(l.subject==="진학지도"?"진학지도":"보습");
     let body=it.lines.map((l)=>{
       const A=l.isEtc?0:l.amount, B=l.isEtc?l.amount:0;
-      const target=l.isEtc?(l.room||"식사비"):l.subject;
+      const target=l.isEtc?(l.room||"기타경비"):l.subject;
       const room=l.isEtc?"":l.room;
       return "<tr><td>"+esc(course(l))+"</td><td>"+esc(target)+"</td><td>"+esc(room)+
         '</td><td class="n">'+won(A)+'</td><td class="n">'+won(B)+'</td><td class="n">'+won(l.amount)+
@@ -456,7 +651,7 @@
       '<table class="rc-items"><thead><tr><th>교습과정</th><th>교습대상</th><th>개설반</th><th>교습비(A)</th><th>기타경비(B)</th><th>합계(A+B)</th><th>비고</th></tr></thead><tbody>'+
         body+'<tr class="sum"><td colspan="3" style="text-align:center">합 계</td><td class="n">'+won(totalA)+
         '</td><td class="n">'+won(totalB)+'</td><td class="n">'+won(total)+"</td><td></td></tr></tbody></table>"+
-      '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비 등은 기타경비(B)에 표기됩니다.</div>'+
+      '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비는 영수증에서 제외됩니다.</div>'+
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br /><span style="letter-spacing:.1em">영수일자 : '+rdateLabel+'</span></div>'+
       '<div class="rc-sign">'+esc(ACADEMY.name)+" · "+esc(ACADEMY.owner)+
         ' <img class="rc-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
