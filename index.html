@@ -292,6 +292,7 @@
     // 수입: 수납현황(현금·환불 제외) → 학생별·납부일·수납월
     const income=[]; const cashByMonth={}; const recByMonth={};
     ALL.forEach((r)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
+      if(isMeal(r.item)) return;                                     // 식사비 제외
       const amt=r.amount||0; if(!amt) return; const m=r.month;
       recByMonth[m]=(recByMonth[m]||0)+amt;                          // 영수증 수입(현금 포함)
       const cls=classifyMethod(r.method);
@@ -414,6 +415,8 @@
 
   // 기타수납은 자동 매핑하지 않고 항상 건별 수기입력(perRecord) 대상으로 둔다.
   const isEtc = (item) => item.replace(/\s/g,"") === "기타수납";
+  // 식사비는 교습비 영수증·현금출납부에서 완전히 제외한다.
+  const isMeal = (item) => /식사/.test(String(item));
   function resolve(rec){
     if(overridesById[rec.id]) return { ...overridesById[rec.id], matched:true };
     if(isEtc(rec.item)) return { subject:"", room:"", matched:false, perRecord:true };
@@ -428,6 +431,7 @@
     // 유효 결제 + 매핑
     const recs=[];
     ALL.forEach((r,i)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
+      if(isMeal(r.item)) return;                                   // 식사비 제외
       const rec={ id:i, ...r }; recs.push({ ...rec, ...resolve(rec) }); });
 
     // 1) 수기입력 게이트 — 미분류(항목명) + 기타수납(건별)
@@ -587,8 +591,8 @@
           out.push({ subject:ml.subject, room:ml.room, amount:ml.amount, isEtc:false, note:notes.join(" / ") });
         });
 
-        // ③ 기타경비(식사비 등)
-        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.room||"식사비", amount:l.amount, isEtc:true, note:"" }));
+        // ③ 기타경비(수기지정용; 식사비는 앞에서 제외됨)
+        fin.filter((l)=>l.isEtc).forEach((l)=> out.push({ subject:l.fsub, room:l.room||"기타경비", amount:l.amount, isEtc:true, note:"" }));
 
         const it={ name, month, rdate, lines: out };
         items.push(it); (byMonth[month]=byMonth[month]||[]).push(it);
@@ -618,7 +622,7 @@
     const course=(l)=> l.isEtc?"기타경비":(l.subject==="진학지도"?"진학지도":"보습");
     let body=it.lines.map((l)=>{
       const A=l.isEtc?0:l.amount, B=l.isEtc?l.amount:0;
-      const target=l.isEtc?(l.room||"식사비"):l.subject;
+      const target=l.isEtc?(l.room||"기타경비"):l.subject;
       const room=l.isEtc?"":l.room;
       return "<tr><td>"+esc(course(l))+"</td><td>"+esc(target)+"</td><td>"+esc(room)+
         '</td><td class="n">'+won(A)+'</td><td class="n">'+won(B)+'</td><td class="n">'+won(l.amount)+
@@ -640,7 +644,7 @@
       '<table class="rc-items"><thead><tr><th>교습과정</th><th>교습대상</th><th>개설반</th><th>교습비(A)</th><th>기타경비(B)</th><th>합계(A+B)</th><th>비고</th></tr></thead><tbody>'+
         body+'<tr class="sum"><td colspan="3" style="text-align:center">합 계</td><td class="n">'+won(totalA)+
         '</td><td class="n">'+won(totalB)+'</td><td class="n">'+won(total)+"</td><td></td></tr></tbody></table>"+
-      '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비 등은 기타경비(B)에 표기됩니다.</div>'+
+      '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비는 영수증에서 제외됩니다.</div>'+
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br /><span style="letter-spacing:.1em">영수일자 : '+rdateLabel+'</span></div>'+
       '<div class="rc-sign">'+esc(ACADEMY.name)+" · "+esc(ACADEMY.owner)+
         ' <img class="rc-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
