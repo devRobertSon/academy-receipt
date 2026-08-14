@@ -477,6 +477,7 @@
     const dropRefund=excludeRefund.checked;
     const recs=[]; const excluded=[];
     ALL.forEach((r,i)=>{ if(!r.name) return; if(dropRefund && r.status.indexOf("환불")>=0) return;
+      if(!(r.amount>0)) return;                                    // 금액 0(이하)은 항목 상관없이 영수증 제외
       const rec={ id:i, ...r }; const res=resolve(rec);
       if(res.excluded){ excluded.push(rec); return; }              // 비교습·미분류 → 제외
       recs.push({ ...rec, ...res }); });
