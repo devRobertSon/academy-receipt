@@ -293,8 +293,9 @@
 
   function classifyMethod(m){ const t=String(m).replace(/\s/g,"");
     if(/현금/.test(t)) return "현금";
+    if(/간편/.test(t)) return "간편결제";
     if(/카드/.test(t)) return "카드";
-    if(/(무통장|계좌|이체|온라인|가상|입금|폰뱅|이니시스|간편)/.test(t)) return "무통장";
+    if(/(무통장|계좌|이체|온라인|가상|입금|폰뱅|이니시스)/.test(t)) return "무통장";
     return t? "기타" : ""; }
 
   function buildCashbook(){
@@ -307,8 +308,7 @@
       recByMonth[m]=(recByMonth[m]||0)+amt;                          // 영수증 수입(현금 포함)
       const cls=classifyMethod(r.method);
       if(cls==="현금"){ cashByMonth[m]=(cashByMonth[m]||0)+amt; return; } // 현금 제외
-      income.push({ month:m, name:r.name, payDate:r.payDate, amount:amt,
-        method: (cls==="카드"||cls==="무통장")? cls : (cls||"") }); });
+      income.push({ month:m, name:r.name, payDate:r.payDate, amount:amt, method: cls||"" }); });
 
     const months=[...new Set(income.map((r)=>r.month).concat(CBTX.map((t)=>t.month)))]
       .filter((m)=>m && m!=="월미상").sort();
@@ -395,7 +395,7 @@
     });
   }
   // 결제수단(현금/카드/무통장) 컬럼 후보 — 현금출납부에서 현금 제외에 사용
-  const METHOD_HEADERS=["결제방법","수납방법","결제수단","수납수단","납부방법","결제구분","수납구분","결제유형","수납유형","결제방식","수납방식","수납형태"];
+  const METHOD_HEADERS=["방식","결제방법","수납방법","결제수단","수납수단","납부방법","결제구분","수납구분","결제유형","수납유형","결제방식","수납방식","수납형태"];
   function extractRows(rows){
     let hi=-1, idx={}, mi=-1;
     for(let i=0;i<Math.min(rows.length,10);i++){ const r=rows[i].map((c)=>String(c).trim());
@@ -564,7 +564,8 @@
         const fin=raw.map((l)=>{ const fsub=finalizeSubject(l.subject,l.grade);
           return { fsub, room:l.room||"", amount:l.amount, payDate:l.payDate,
             isEtc:fsub==="기타경비", isMath:/^수학/.test(fsub) }; });
-        const rdate=fin.reduce((mx,l)=>(dkey(l.payDate)>dkey(mx)?l.payDate:mx), "");
+        const rdate=fin.reduce((mx,l)=>{ const d=l.payDate||"";      // 가장 늦은 유효 납부일 = 영수일
+          return (/^\d{4}-\d{2}-\d{2}$/.test(d) && d>mx) ? d : mx; }, "");
         const out=[];
 
         // ① 과학·진학지도 등: 항목별 실제 라인, 개설반(세부반) 같으면 A/B
