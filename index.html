@@ -569,11 +569,22 @@
           return (/^\d{4}-\d{2}-\d{2}$/.test(d) && d>mx) ? d : mx; }, "");
         const out=[];
 
-        // ① 과학·진학지도 등: 항목별 실제 라인, 개설반(세부반) 같으면 A/B
+        // ① 과학·진학지도 등: (교습과목+세부반) 그룹. 합이 교습과목 정가를 넘으면
+        //    정가 기준으로 여러 과목(A/B/C…)으로 나누고, 과목당 중복수강 −5만·나머지 중복시간 할인 표기.
         const others=fin.filter((l)=>!l.isMath && !l.isEtc);
-        const grp={}; others.forEach((l)=>{ const g=l.fsub+"|"+l.room; (grp[g]=grp[g]||[]).push(l); });
-        Object.values(grp).forEach((g)=>{ if(g.length>=2) g.forEach((l,i)=>l._ab=" "+String.fromCharCode(65+i)); });
-        others.forEach((l)=> out.push({ subject:l.fsub, room:(l.room||"")+(l._ab||""), amount:l.amount, isEtc:false, note:"" }));
+        const ogrp={}; others.forEach((l)=>{ const key=l.fsub+"|"+(l.room||""); (ogrp[key]=ogrp[key]||[]).push(l); });
+        Object.values(ogrp).forEach((g)=>{ const level=g[0].fsub.replace(/ [AB]$/,"");
+          const price=PRICE_TABLE[level]||0; const T=g.reduce((s,l)=>s+l.amount,0);
+          const n= price>0 ? Math.max(1, Math.ceil(T/price)) : 1;
+          if(n<=1){ out.push({ subject:g[0].fsub, room:g[0].room||"", amount:T, isEtc:false, note:"" }); return; }
+          const lines=[]; let D=n*price - T;                        // 총 할인액
+          for(let i=0;i<n;i++){ const jung=Math.min(50000, D); D-=jung; lines.push({ jung, sigan:0 }); } // 중복수강 −5만/과목
+          for(let i=n-1;i>=0 && D>0;i--){ const cap=price-lines[i].jung; const add=Math.min(D,cap); lines[i].sigan+=add; D-=add; } // 나머지=중복시간
+          lines.forEach((ln,i)=>{ const amt=price-ln.jung-ln.sigan; const notes=[];
+            if(ln.jung>0) notes.push("중복수강 할인 −"+won(ln.jung)+"원");
+            if(ln.sigan>0) notes.push("중복시간 할인 −"+won(ln.sigan)+"원");
+            out.push({ subject:g[0].fsub, room:(g[0].room||"")+" "+String.fromCharCode(65+i), amount:amt, isEtc:false, note:notes.join(" / ") }); });
+        });
 
         // ② 수학: (교습과목+세부반) 그룹. 합이 정가 이하면 한 줄로 합산(분할납),
         //    정가 초과면 서로 다른 반이므로 항목별로 분리.
