@@ -85,6 +85,7 @@
   .rc-items th, .rc-items td { border: 1px solid #555; padding: 5px 9px; white-space: nowrap; }
   .rc-items th { background: #f1f1f1; text-align: center; }
   .rc-items td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .rc-items td.note { white-space: normal; word-break: keep-all; min-width: 150px; line-height: 1.5; }
   .rc-items tr.sum td { font-weight: 700; background: #fafafa; }
   .rc-note { font-size: .76rem; color: #666 !important; margin: 4px 0; }
   .rc-foot { margin-top: 16px; text-align: center; font-size: .92rem; line-height: 2.1; }
@@ -644,9 +645,10 @@
       const A=l.isEtc?0:l.amount, B=l.isEtc?l.amount:0;
       const target=l.isEtc?(l.room||"기타경비"):l.subject;
       const room=l.isEtc?"":l.room;
+      const noteHTML=esc(l.note).replace(/ \/ /g,"<br>");           // 할인 항목마다 줄바꿈
       return "<tr><td>"+esc(course(l))+"</td><td>"+esc(target)+"</td><td>"+esc(room)+
         '</td><td class="n">'+won(A)+'</td><td class="n">'+won(B)+'</td><td class="n">'+won(l.amount)+
-        "</td><td>"+esc(l.note)+"</td></tr>";
+        '</td><td class="note">'+noteHTML+"</td></tr>";
     }).join("");
     const totalA=it.lines.reduce((a,l)=>a+(l.isEtc?0:l.amount),0);
     const totalB=it.lines.reduce((a,l)=>a+(l.isEtc?l.amount:0),0);
