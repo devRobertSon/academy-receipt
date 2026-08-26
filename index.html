@@ -120,7 +120,7 @@
 </style>
 
 <div class="screen">
-<h1>열매맺는나무알파학원 회계 도구</h1>
+<h1>알파학원 교습비 영수증 및 현금출납부 출력 페이지</h1>
 
 <div class="tabs">
   <button class="tab on" data-tab="receipt">교습비 영수증</button>
@@ -181,8 +181,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 (function () {
-  const ACADEMY = { name: "열매맺는나무알파학원", owner: "유한회사 알파학원",
-    addr: "세종시 달빛로47 501호", tel: "044-864-6693", reg: "" };
+  const ACADEMY = { name: "알파학원", nameBefore: "열매맺는나무알파학원", nameChange: "2025-10-20",
+    owner: "유한회사 알파학원", addr: "세종특별자치시 달빛로47, 501-a호, 502호",
+    tel: "044-864-6693", reg: "제1628호" };
+  // 2025-10-20자 명칭 변경: 그 전 영수일은 옛 이름, 이후는 새 이름
+  const academyName = (ymd) => (ymd && String(ymd) < ACADEMY.nameChange) ? ACADEMY.nameBefore : ACADEMY.name;
   const MAPPING_CSV = "수납항목매핑.csv";
   const REPO_SEAL = "seal.png";
 
@@ -361,7 +364,7 @@
       ? "영수증 수입(현금 포함) "+won(p.recTotal)+"원 − 현금 "+won(p.cashM)+"원 = 본 출납부 수입 "+won(p.sumIn)+"원"
       : "영수증 수입과 일치 — 수입 합계 "+won(p.sumIn)+"원";
     return '<div class="cbsheet"><div class="cb-title">현 금 출 납 부</div>'+
-      '<div class="cb-sub">'+esc(ACADEMY.name)+' ('+esc(ACADEMY.owner)+') · '+esc(label)+'</div>'+
+      '<div class="cb-sub">'+esc(academyName(p.month+"-20"))+' ('+esc(ACADEMY.owner)+') · '+esc(label)+'</div>'+
       '<div class="cb-recon">※ '+esc(recon)+(CBTX.length?'':' · 지출은 통장 입출금내역서를 올리면 채워집니다.')+
         ' · 잔액은 장부상(수입−지출) 누계입니다.</div>'+
       '<table class="cb"><thead><tr><th style="width:60px">일자</th><th>적요</th>'+
@@ -658,7 +661,7 @@
       '<span class="rc-formno">■ 학원의 설립·운영 및 과외교습에 관한 법률 시행규칙 [별지 제24호서식]</span></div>'+
       '<div class="rc-title">교습비등 영수증</div><div class="rc-ym">'+esc(ymBun)+'</div>'+
       '<table class="rc-meta"><tbody>'+
-        "<tr><th>학원(교습소)명</th><td>"+esc(ACADEMY.name)+"</td><th>등록번호</th><td>"+esc(ACADEMY.reg)+"</td></tr>"+
+        "<tr><th>학원(교습소)명</th><td>"+esc(academyName(it.rdate))+"</td><th>등록번호</th><td>"+esc(ACADEMY.reg)+"</td></tr>"+
         "<tr><th>소재지</th><td>"+esc(ACADEMY.addr)+"</td><th>전화번호</th><td>"+esc(ACADEMY.tel)+"</td></tr>"+
         "<tr><th>설립·운영자</th><td>"+esc(ACADEMY.owner)+"</td><th>수납 연월</th><td>"+esc(ymLabel)+"</td></tr>"+
         "<tr><th>학습자 성명</th><td colspan='3'>"+esc(it.name)+"</td></tr>"+
@@ -668,7 +671,7 @@
         '</td><td class="n">'+won(totalB)+'</td><td class="n">'+won(total)+"</td><td></td></tr></tbody></table>"+
       '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비는 영수증에서 제외됩니다.</div>'+
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br /><span style="letter-spacing:.1em">영수일자 : '+rdateLabel+'</span></div>'+
-      '<div class="rc-sign">'+esc(ACADEMY.name)+" · "+esc(ACADEMY.owner)+
+      '<div class="rc-sign">'+esc(academyName(it.rdate))+" · "+esc(ACADEMY.owner)+
         ' <img class="rc-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
       "</div>";
   }
