@@ -684,7 +684,7 @@
         '</td><td class="n">'+won(totalB)+'</td><td class="n">'+won(total)+"</td><td></td></tr></tbody></table>"+
       '<div class="rc-note">※ 교습과목별 정가 대비 실납부 차액은 중복수강 할인으로 비고에 표기됩니다. 식사비는 영수증에서 제외됩니다.</div>'+
       '<div class="rc-foot">위 금액을 정히 <b>영수</b>합니다.<br /><span style="letter-spacing:.1em">영수일자 : '+rdateLabel+'</span></div>'+
-      '<div class="rc-sign">'+esc(academyName(it.rdate))+" · "+esc(ACADEMY.owner)+
+      '<div class="rc-sign">'+esc(ACADEMY.owner.indexOf(academyName(it.rdate))>=0 ? ACADEMY.owner : academyName(it.rdate))+
         ' <img class="rc-seal" src="'+REPO_SEAL+'" alt="(인)" onerror="__sealErr(this)" /></div>'+
       "</div>";
   }
